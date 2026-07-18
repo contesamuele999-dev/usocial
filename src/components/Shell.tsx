@@ -19,7 +19,7 @@ const NAV = [
   { href: "/settings", label: "Impostazioni", icon: "⚙️" },
 ];
 
-const AUTH_PAGES = ["/login", "/register"];
+const AUTH_PAGES = ["/login", "/register", "/privacy", "/terms"];
 
 function ThemeToggle() {
   const [dark, setDark] = useState(false);

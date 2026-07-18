@@ -12,6 +12,9 @@ import type { NextRequest } from "next/server";
 import { SESSION_COOKIE } from "@/lib/constants";
 
 const PUBLIC_PAGES = ["/login", "/register"];
+// Pagine sempre accessibili, con o senza login (richieste anche dai revisori
+// delle piattaforme social, es. TikTok, che le visitano senza autenticarsi).
+const ALWAYS_PUBLIC = ["/privacy", "/terms"];
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -19,6 +22,9 @@ export function middleware(req: NextRequest) {
 
   // Le route API si autogestiscono (auth, callback OAuth, file media pubblici).
   if (pathname.startsWith("/api")) return NextResponse.next();
+
+  // Pagine legali: accessibili a chiunque, nessun redirect.
+  if (ALWAYS_PUBLIC.includes(pathname)) return NextResponse.next();
 
   if (PUBLIC_PAGES.includes(pathname)) {
     if (hasSession) return NextResponse.redirect(new URL("/", req.url));

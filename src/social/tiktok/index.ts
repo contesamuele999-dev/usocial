@@ -24,15 +24,17 @@ export const tiktokModule: SocialModule = {
   },
 
   async fetchAccount(tokens: TokenSet) {
+    // Nota: il campo `username` richiede lo scope `user.info.profile`, che l'app
+    // non chiede. Restiamo su open_id e display_name (coperti da user.info.basic).
     const info = await apiFetch(
-      `${API}/user/info/?fields=open_id,display_name,username`,
+      `${API}/user/info/?fields=open_id,display_name`,
       { headers: { Authorization: `Bearer ${tokens.accessToken}` } }
     );
     const user = (info.data as { user?: Record<string, unknown> })?.user || {};
     return {
       accountId: (user.open_id as string) || "",
-      accountName: (user.display_name as string) || (user.username as string) || "Account TikTok",
-      meta: { username: user.username },
+      accountName: (user.display_name as string) || "Account TikTok",
+      meta: {},
     };
   },
 

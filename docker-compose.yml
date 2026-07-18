@@ -1,0 +1,15 @@
+# uSocial — avvio con: docker compose up -d
+# I dati (database SQLite + media) restano nella cartella ./data dell'host.
+services:
+  usocial:
+    build: .
+    container_name: usocial
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      - DATA_DIR=/app/data
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

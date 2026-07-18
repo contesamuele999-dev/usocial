@@ -1,0 +1,7 @@
+# Caddy: reverse proxy con HTTPS automatico (Let's Encrypt).
+# Il dominio arriva dalla variabile APP_DOMAIN (impostata in .env e passata
+# al container caddy nel docker-compose.prod.yml).
+# Caddy ottiene e rinnova da solo il certificato TLS: nessuna configurazione manuale.
+{$APP_DOMAIN} {
+	reverse_proxy usocial:3000
+}

@@ -1,0 +1,190 @@
+"use client";
+/**
+ * Calendario editoriale mensile con drag & drop:
+ * trascina un post su un altro giorno per riprogrammarlo (l'orario resta).
+ * Click su un giorno vuoto = nuovo post con quella data.
+ */
+import Link from "next/link";
+import { useCallback, useEffect, useState } from "react";
+import { api, type PlatformInfo } from "@/lib/client";
+import type { Platform, Post } from "@/types";
+
+const DAY_NAMES = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
+
+function ymd(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+export default function CalendarPage() {
+  const [cursor, setCursor] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [platforms, setPlatforms] = useState<PlatformInfo[]>([]);
+  const [filter, setFilter] = useState<Platform | "">("");
+  const [dragId, setDragId] = useState<number | null>(null);
+
+  const load = useCallback(async () => {
+    const [p, pl] = await Promise.all([
+      api<Post[]>("/api/posts"),
+      api<PlatformInfo[]>("/api/platforms"),
+    ]);
+    setPosts(p);
+    setPlatforms(pl);
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // Griglia del mese: settimane che iniziano di lunedì
+  const first = new Date(cursor);
+  const offset = (first.getDay() + 6) % 7; // 0 = lunedì
+  const start = new Date(first);
+  start.setDate(first.getDate() - offset);
+  const cells: Date[] = Array.from({ length: 42 }, (_, i) => {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    return d;
+  });
+
+  const visible = filter
+    ? posts.filter((p) => p.targets.some((t) => t.platform === filter))
+    : posts;
+
+  const byDay = (d: Date) =>
+    visible.filter((p) => p.scheduledAt && ymd(new Date(p.scheduledAt)) === ymd(d));
+
+  const onDrop = async (day: Date) => {
+    if (dragId === null) return;
+    const post = posts.find((p) => p.id === dragId);
+    setDragId(null);
+    if (!post) return;
+    // mantiene l'orario originale (o 09:00 se non c'era)
+    const old = post.scheduledAt ? new Date(post.scheduledAt) : null;
+    const next = new Date(day);
+    next.setHours(old?.getHours() ?? 9, old?.getMinutes() ?? 0, 0, 0);
+    await api(`/api/posts/${post.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ scheduledAt: next.toISOString() }),
+    });
+    load();
+  };
+
+  const duplicate = async (e: React.MouseEvent, id: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    await api(`/api/posts/${id}/duplicate`, { method: "POST" });
+    load();
+  };
+
+  const monthLabel = cursor.toLocaleString("it-IT", { month: "long", year: "numeric" });
+  const today = ymd(new Date());
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-bold">Calendario</h1>
+        <div className="flex items-center gap-2">
+          <select
+            className="input w-auto"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value as Platform | "")}
+          >
+            <option value="">Tutte le piattaforme</option>
+            {platforms.map((p) => (
+              <option key={p.platform} value={p.platform}>
+                {p.displayName}
+              </option>
+            ))}
+          </select>
+          <button
+            className="btn-secondary px-3"
+            onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))}
+          >
+            ←
+          </button>
+          <span className="min-w-36 text-center font-semibold capitalize">{monthLabel}</span>
+          <button
+            className="btn-secondary px-3"
+            onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))}
+          >
+            →
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-7 gap-px overflow-hidden rounded-xl border border-gray-200 bg-gray-200 dark:border-gray-800 dark:bg-gray-800">
+        {DAY_NAMES.map((d) => (
+          <div
+            key={d}
+            className="bg-gray-100 p-2 text-center text-xs font-semibold text-gray-500 dark:bg-gray-900"
+          >
+            {d}
+          </div>
+        ))}
+        {cells.map((day) => {
+          const inMonth = day.getMonth() === cursor.getMonth();
+          const dayPosts = byDay(day);
+          return (
+            <div
+              key={day.toISOString()}
+              className={`min-h-24 bg-white p-1.5 dark:bg-gray-950 ${inMonth ? "" : "opacity-40"}`}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={() => onDrop(day)}
+            >
+              <Link
+                href={`/posts/new?date=${ymd(day)}`}
+                className={`mb-1 inline-flex h-6 w-6 items-center justify-center rounded-full text-xs hover:bg-gray-100 dark:hover:bg-gray-800 ${
+                  ymd(day) === today ? "bg-brand-600 font-bold text-white" : "text-gray-500"
+                }`}
+                title="Nuovo post in questo giorno"
+              >
+                {day.getDate()}
+              </Link>
+              <div className="space-y-1">
+                {dayPosts.map((p) => (
+                  <Link
+                    key={p.id}
+                    href={`/posts/${p.id}`}
+                    draggable
+                    onDragStart={() => setDragId(p.id)}
+                    className="group block cursor-grab rounded-md border border-gray-200 bg-gray-50 px-1.5 py-1 text-xs hover:border-brand-400 dark:border-gray-700 dark:bg-gray-900"
+                    title={p.title || p.body}
+                  >
+                    <span className="mr-1 inline-flex gap-0.5">
+                      {p.targets.map((t) => {
+                        const info = platforms.find((x) => x.platform === t.platform);
+                        return (
+                          <span
+                            key={t.platform}
+                            className="inline-block h-2 w-2 rounded-full"
+                            style={{ backgroundColor: info?.color || "#999" }}
+                          />
+                        );
+                      })}
+                    </span>
+                    <span className="truncate">{p.title || p.body.slice(0, 30) || "(post)"}</span>
+                    <button
+                      onClick={(e) => duplicate(e, p.id)}
+                      className="ml-1 hidden text-gray-400 hover:text-gray-700 group-hover:inline"
+                      title="Duplica"
+                    >
+                      ⧉
+                    </button>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-xs text-gray-500">
+        💡 Trascina un post su un altro giorno per riprogrammarlo · clicca sul numero del giorno per
+        creare un post in quella data.
+      </p>
+    </div>
+  );
+}

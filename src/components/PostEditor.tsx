@@ -1,0 +1,321 @@
+"use client";
+/**
+ * Editor del post: contenuto, piattaforme, media, programmazione, AI.
+ * Usato sia per creare (postId=null) sia per modificare un post.
+ */
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { api, fmtDate, retryInfo, type PlatformInfo } from "@/lib/client";
+import type { Platform, Post } from "@/types";
+import { EmojiPicker } from "./EmojiPicker";
+import { MediaPicker } from "./MediaPicker";
+import { AiPanel } from "./AiPanel";
+import { StatusBadge } from "./PostCard";
+
+/** Converte ISO ↔ valore per <input type="datetime-local"> (ora locale). */
+function isoToLocal(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function localToIso(local: string): string | null {
+  return local ? new Date(local).toISOString() : null;
+}
+
+export function PostEditor({ initial }: { initial: Post | null }) {
+  const router = useRouter();
+  const [platforms, setPlatforms] = useState<PlatformInfo[]>([]);
+  const [title, setTitle] = useState(initial?.title || "");
+  const [body, setBody] = useState(initial?.body || "");
+  const [hashtags, setHashtags] = useState(initial?.hashtags || "");
+  const [selected, setSelected] = useState<Platform[]>(initial?.targets.map((t) => t.platform) || []);
+  const [mediaIds, setMediaIds] = useState<number[]>(initial?.media.map((m) => m.id) || []);
+  const [scheduled, setScheduled] = useState(isoToLocal(initial?.scheduledAt || null));
+  // id=0 = precompilazione (es. data dal calendario), non un post salvato
+  const [post, setPost] = useState<Post | null>(initial && initial.id > 0 ? initial : null);
+  const [busy, setBusy] = useState("");
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    api<PlatformInfo[]>("/api/platforms").then(setPlatforms).catch(() => {});
+  }, []);
+
+  const togglePlatform = (p: Platform) =>
+    setSelected((s) => (s.includes(p) ? s.filter((x) => x !== p) : [...s, p]));
+
+  const insertEmoji = (emoji: string) => {
+    const el = bodyRef.current;
+    if (!el) return setBody((b) => b + emoji);
+    const start = el.selectionStart ?? body.length;
+    setBody(body.slice(0, start) + emoji + body.slice(el.selectionEnd ?? start));
+  };
+
+  const payload = (status: "draft" | "scheduled") => ({
+    title,
+    body,
+    hashtags,
+    scheduledAt: localToIso(scheduled),
+    status,
+    platforms: selected,
+    mediaIds,
+  });
+
+  /** Salva (crea o aggiorna) e ritorna il post. */
+  const save = async (status: "draft" | "scheduled"): Promise<Post> => {
+    if (post) {
+      return api<Post>(`/api/posts/${post.id}`, { method: "PUT", body: JSON.stringify(payload(status)) });
+    }
+    return api<Post>("/api/posts", { method: "POST", body: JSON.stringify(payload(status)) });
+  };
+
+  const doSave = async (status: "draft" | "scheduled") => {
+    if (status === "scheduled" && !scheduled) {
+      setMessage({ ok: false, text: "Imposta data e ora per programmare il post." });
+      return;
+    }
+    setBusy(status);
+    setMessage(null);
+    try {
+      const saved = await save(status);
+      setPost(saved);
+      setMessage({
+        ok: true,
+        text: status === "draft" ? "Bozza salvata." : `Programmato per ${fmtDate(saved.scheduledAt)}.`,
+      });
+      if (!post) router.replace(`/posts/${saved.id}`);
+    } catch (err) {
+      setMessage({ ok: false, text: String(err instanceof Error ? err.message : err) });
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const doPublish = async () => {
+    if (selected.length === 0) {
+      setMessage({ ok: false, text: "Seleziona almeno una piattaforma." });
+      return;
+    }
+    if (!confirm(`Pubblicare ORA su: ${selected.join(", ")}?`)) return;
+    setBusy("publish");
+    setMessage(null);
+    try {
+      const saved = await save("draft");
+      setPost(saved);
+      const published = await api<Post>(`/api/posts/${saved.id}/publish`, { method: "POST" });
+      setPost(published);
+      const ok = published.status === "published";
+      const failures = published.targets.filter((t) => t.error).map((t) => `${t.platform}: ${t.error}`);
+      setMessage({
+        ok,
+        text: ok ? "✅ Pubblicato su tutte le piattaforme!" : `Esito parziale — ${failures.join(" · ")}`,
+      });
+      if (!window.location.pathname.includes(`/posts/${saved.id}`)) {
+        router.replace(`/posts/${saved.id}`);
+      }
+    } catch (err) {
+      setMessage({ ok: false, text: String(err instanceof Error ? err.message : err) });
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const doAdapt = async () => {
+    if (!post) {
+      setMessage({ ok: false, text: "Salva prima il post (anche come bozza)." });
+      return;
+    }
+    setBusy("adapt");
+    setMessage(null);
+    try {
+      await save(post.status === "scheduled" ? "scheduled" : "draft");
+      const updated = await api<Post>(`/api/posts/${post.id}/adapt`, { method: "POST" });
+      setPost(updated);
+      setMessage({ ok: true, text: "Testi adattati per ogni piattaforma (vedi anteprime sotto)." });
+    } catch (err) {
+      setMessage({ ok: false, text: String(err instanceof Error ? err.message : err) });
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const bodyLen = body.length + (hashtags ? hashtags.length + 2 : 0);
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-3">
+      {/* Colonna principale: contenuto */}
+      <div className="space-y-4 lg:col-span-2">
+        <div className="card space-y-3">
+          <input
+            className="input text-lg font-semibold"
+            placeholder="Titolo (usato da YouTube/TikTok, opzionale altrove)"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+          <textarea
+            ref={bodyRef}
+            className="input min-h-48 resize-y font-normal"
+            placeholder="Scrivi qui il tuo contenuto una sola volta…"
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <EmojiPicker onPick={insertEmoji} />
+            <input
+              className="input flex-1"
+              placeholder="#hashtag #separati #da #spazi"
+              value={hashtags}
+              onChange={(e) => setHashtags(e.target.value)}
+            />
+            <span className="text-xs text-gray-500">{bodyLen} caratteri</span>
+          </div>
+        </div>
+
+        <AiPanel
+          text={body}
+          title={title}
+          onApplyBody={setBody}
+          onApplyHashtags={setHashtags}
+        />
+
+        <div className="card">
+          <MediaPicker selected={mediaIds} onChange={setMediaIds} />
+        </div>
+
+        {/* Anteprime adattate per piattaforma */}
+        {post && post.targets.some((t) => t.adaptedBody) && (
+          <div className="card">
+            <h3 className="mb-2 font-semibold">Versioni adattate</h3>
+            <div className="space-y-3">
+              {post.targets
+                .filter((t) => t.adaptedBody)
+                .map((t) => {
+                  const info = platforms.find((p) => p.platform === t.platform);
+                  return (
+                    <div key={t.platform} className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+                      <div className="mb-1 flex items-center gap-2 text-sm font-medium">
+                        <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: info?.color }} />
+                        {info?.displayName || t.platform}
+                      </div>
+                      <pre className="whitespace-pre-wrap font-sans text-sm text-gray-600 dark:text-gray-300">
+                        {t.adaptedBody}
+                      </pre>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Colonna laterale: piattaforme + programmazione + azioni */}
+      <div className="space-y-4">
+        <div className="card">
+          <h3 className="mb-2 font-semibold">Piattaforme</h3>
+          <div className="space-y-2">
+            {platforms.map((p) => {
+              const target = post?.targets.find((t) => t.platform === p.platform);
+              return (
+                <label
+                  key={p.platform}
+                  className={`flex cursor-pointer items-center gap-3 rounded-lg border p-2.5 transition ${
+                    selected.includes(p.platform)
+                      ? "border-brand-500 bg-brand-50 dark:bg-brand-700/10"
+                      : "border-gray-200 dark:border-gray-700"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(p.platform)}
+                    onChange={() => togglePlatform(p.platform)}
+                    className="h-4 w-4 accent-brand-600"
+                  />
+                  <span className="h-3 w-3 rounded-full" style={{ backgroundColor: p.color }} />
+                  <span className="flex-1 text-sm font-medium">{p.displayName}</span>
+                  {target && target.status !== "pending" && <StatusBadge status={target.status} />}
+                  {!p.connected && (
+                    <span className="text-xs text-amber-600" title="Account non connesso">
+                      ⚠️
+                    </span>
+                  )}
+                </label>
+              );
+            })}
+          </div>
+          <button
+            type="button"
+            className="btn-secondary mt-3 w-full text-xs"
+            onClick={doAdapt}
+            disabled={busy !== "" || selected.length === 0}
+          >
+            {busy === "adapt" ? "Adattamento in corso…" : "🤖 Adatta il testo a ogni piattaforma"}
+          </button>
+        </div>
+
+        <div className="card">
+          <h3 className="mb-2 font-semibold">Programmazione</h3>
+          <input
+            type="datetime-local"
+            className="input"
+            value={scheduled}
+            onChange={(e) => setScheduled(e.target.value)}
+          />
+        </div>
+
+        <div className="card space-y-2">
+          {post && (
+            <div className="mb-1 flex items-center justify-between text-sm">
+              <span className="text-gray-500">Stato</span>
+              <StatusBadge status={post.status} />
+            </div>
+          )}
+          <button className="btn-primary w-full" onClick={doPublish} disabled={busy !== ""}>
+            {busy === "publish" ? "Pubblicazione…" : "🚀 Pubblica ora"}
+          </button>
+          <button className="btn-secondary w-full" onClick={() => doSave("scheduled")} disabled={busy !== ""}>
+            {busy === "scheduled" ? "Salvataggio…" : "🗓️ Programma"}
+          </button>
+          <button className="btn-secondary w-full" onClick={() => doSave("draft")} disabled={busy !== ""}>
+            {busy === "draft" ? "Salvataggio…" : "💾 Salva bozza"}
+          </button>
+          {message && (
+            <p className={`text-sm ${message.ok ? "text-green-600" : "text-red-500"}`}>{message.text}</p>
+          )}
+        </div>
+
+        {/* Esiti per piattaforma */}
+        {post && post.targets.some((t) => t.externalUrl || t.error) && (
+          <div className="card">
+            <h3 className="mb-2 font-semibold">Esiti</h3>
+            <ul className="space-y-2 text-sm">
+              {post.targets.map((t) => {
+                const retry = retryInfo(t);
+                return (
+                  <li key={t.platform} className="flex flex-col gap-0.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span>{t.platform}</span>
+                      {t.externalUrl ? (
+                        <a href={t.externalUrl} target="_blank" className="text-brand-600 hover:underline">
+                          Apri ↗
+                        </a>
+                      ) : (
+                        <StatusBadge status={t.status} />
+                      )}
+                    </div>
+                    {retry && <span className="text-xs text-amber-600">⏳ {retry}</span>}
+                    {t.status === "failed" && !t.nextRetryAt && t.error && (
+                      <span className="text-xs text-red-500" title={t.error}>
+                        Tentativi esauriti — usa &quot;Pubblica ora&quot; per riprovare
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

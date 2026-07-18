@@ -1,0 +1,44 @@
+# uSocial — deploy di produzione con HTTPS automatico.
+#
+# Avvio sul server:
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Richiede nel file .env:
+#   APP_DOMAIN=iltuonome.duckdns.org        (dominio pubblico che punta al server)
+#   APP_URL=https://iltuonome.duckdns.org   (stesso dominio, con https)
+#
+# Caddy (reverse proxy) ottiene e rinnova da solo il certificato HTTPS.
+# L'app NON espone la porta 3000 su internet: passa solo da Caddy (80/443).
+services:
+  usocial:
+    build: .
+    container_name: usocial
+    env_file:
+      - .env
+    environment:
+      - DATA_DIR=/app/data
+    volumes:
+      - ./data:/app/data # database SQLite + media, persistenti sull'host
+    expose:
+      - "3000" # visibile solo agli altri container, non a internet
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: usocial-caddy
+    depends_on:
+      - usocial
+    environment:
+      - APP_DOMAIN=${APP_DOMAIN} # letto dal .env, usato nel Caddyfile
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data # certificati TLS (persistenti)
+      - caddy_config:/config
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

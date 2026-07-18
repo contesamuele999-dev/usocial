@@ -1,0 +1,9 @@
+node_modules
+.next
+data
+.env
+.git
+coverage
+tests
+README.md
+ROADMAP.md

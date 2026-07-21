@@ -1,0 +1,17 @@
+console: 
+https://ssh.cloud.google.com/v2/ssh/projects/project-12c01f56-9354-4d3e-b4e/zones/us-central1-a/instances/usocial-instance?authuser=0&hl=it&projectNumber=831118051713&useAdminProxy=true
+
+__________________
+Aggiornare codice:
+
+cd usocial
+git pull
+sudo docker compose -f docker-compose.prod.yml up -d --build
+
+_________________________________________________
+aggiornare .env:
+
+cd usocial
+nano .env
+-------
+sudo docker compose -f docker-compose.prod.yml up -d

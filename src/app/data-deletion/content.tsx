@@ -1,0 +1,68 @@
+"use client";
+/**
+ * Contenuto (client) della pagina di cancellazione dati: usa l'i18n per
+ * mostrare le istruzioni in italiano o inglese secondo la lingua scelta.
+ */
+import Link from "next/link";
+import { useI18n } from "@/lib/i18n";
+
+const UPDATED = "21 luglio 2026";
+const CONTACT = "umasterinfo@gmail.com";
+
+export function DataDeletionContent() {
+  const { t } = useI18n();
+  return (
+    <div className="mx-auto max-w-3xl px-6 py-12 text-gray-800 dark:text-gray-200">
+      <Link href="/" className="text-sm text-brand-600 hover:underline">
+        {t("dataDeletion.back")}
+      </Link>
+
+      <h1 className="mt-4 text-3xl font-bold">{t("dataDeletion.title")}</h1>
+      <p className="mt-1 text-sm text-gray-500">{t("dataDeletion.updated", { date: UPDATED })}</p>
+
+      <div className="mt-8 space-y-6 leading-relaxed">
+        <p>{t("dataDeletion.intro")}</p>
+
+        <section>
+          <h2 className="text-xl font-semibold">{t("dataDeletion.optionAppTitle")}</h2>
+          <p className="mt-1">{t("dataDeletion.optionAppDesc")}</p>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-semibold">{t("dataDeletion.optionEmailTitle")}</h2>
+          <p className="mt-1">
+            {t("dataDeletion.optionEmailDesc", { email: CONTACT })
+              .split(CONTACT)
+              .flatMap((part, i) =>
+                i === 0
+                  ? [part]
+                  : [
+                      <a key="mail" className="text-brand-600 hover:underline" href={`mailto:${CONTACT}`}>
+                        {CONTACT}
+                      </a>,
+                      part,
+                    ]
+              )}
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-semibold">{t("dataDeletion.whatTitle")}</h2>
+          <p className="mt-1">{t("dataDeletion.whatList")}</p>
+        </section>
+
+        <p className="text-sm text-gray-500">{t("dataDeletion.metaNote")}</p>
+      </div>
+
+      <p className="mt-10 text-sm text-gray-500">
+        <Link href="/privacy" className="text-brand-600 hover:underline">
+          {t("auth.privacy")}
+        </Link>{" "}
+        ·{" "}
+        <Link href="/terms" className="text-brand-600 hover:underline">
+          {t("auth.terms")}
+        </Link>
+      </p>
+    </div>
+  );
+}

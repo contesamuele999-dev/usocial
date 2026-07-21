@@ -6,8 +6,10 @@
 import Link from "next/link";
 import { useState } from "react";
 import { api } from "@/lib/client";
+import { useI18n } from "@/lib/i18n";
 
 export function AuthForm({ mode }: { mode: "login" | "register" }) {
+  const { t } = useI18n();
   const isRegister = mode === "register";
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
@@ -41,14 +43,14 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
             u<span className="text-brand-600">Social</span>
           </h1>
           <p className="text-sm text-gray-500">
-            {isRegister ? "Crea il tuo account" : "Accedi al tuo account"}
+            {isRegister ? t("auth.createAccount") : t("auth.loginAccount")}
           </p>
         </div>
         <form onSubmit={submit} className="space-y-3">
           {isRegister && (
             <input
               className="input"
-              placeholder="Nome"
+              placeholder={t("auth.name")}
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
@@ -57,7 +59,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           <input
             className="input"
             type="email"
-            placeholder="Email"
+            placeholder={t("auth.email")}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
@@ -65,7 +67,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           <input
             className="input"
             type="password"
-            placeholder={isRegister ? "Password (min 8 caratteri)" : "Password"}
+            placeholder={isRegister ? t("auth.passwordRegister") : t("auth.password")}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
@@ -73,33 +75,33 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           />
           {error && <p className="text-sm text-red-500">{error}</p>}
           <button className="btn-primary w-full" disabled={busy}>
-            {busy ? "Attendere…" : isRegister ? "Registrati" : "Accedi"}
+            {busy ? t("auth.waiting") : isRegister ? t("auth.register") : t("auth.login")}
           </button>
         </form>
         <p className="mt-4 text-center text-sm text-gray-500">
           {isRegister ? (
             <>
-              Hai già un account?{" "}
+              {t("auth.haveAccount")}
               <Link href="/login" className="font-medium text-brand-600 hover:underline">
-                Accedi
+                {t("auth.login")}
               </Link>
             </>
           ) : (
             <>
-              Non hai un account?{" "}
+              {t("auth.noAccount")}
               <Link href="/register" className="font-medium text-brand-600 hover:underline">
-                Registrati
+                {t("auth.register")}
               </Link>
             </>
           )}
         </p>
         <p className="mt-3 text-center text-xs text-gray-400">
           <Link href="/privacy" className="hover:underline">
-            Privacy Policy
+            {t("auth.privacy")}
           </Link>{" "}
           ·{" "}
           <Link href="/terms" className="hover:underline">
-            Termini di Servizio
+            {t("auth.terms")}
           </Link>
         </p>
       </div>

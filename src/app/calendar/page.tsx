@@ -7,9 +7,10 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { api, type PlatformInfo } from "@/lib/client";
+import { useI18n } from "@/lib/i18n";
 import type { Platform, Post } from "@/types";
 
-const DAY_NAMES = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
+const DAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
 
 function ymd(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -17,6 +18,7 @@ function ymd(d: Date): string {
 }
 
 export default function CalendarPage() {
+  const { t, lang } = useI18n();
   const [cursor, setCursor] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
@@ -80,20 +82,23 @@ export default function CalendarPage() {
     load();
   };
 
-  const monthLabel = cursor.toLocaleString("it-IT", { month: "long", year: "numeric" });
+  const monthLabel = cursor.toLocaleString(lang === "en" ? "en-US" : "it-IT", {
+    month: "long",
+    year: "numeric",
+  });
   const today = ymd(new Date());
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold">Calendario</h1>
+        <h1 className="text-2xl font-bold">{t("calendar.title")}</h1>
         <div className="flex items-center gap-2">
           <select
             className="input w-auto"
             value={filter}
             onChange={(e) => setFilter(e.target.value as Platform | "")}
           >
-            <option value="">Tutte le piattaforme</option>
+            <option value="">{t("calendar.allPlatforms")}</option>
             {platforms.map((p) => (
               <option key={p.platform} value={p.platform}>
                 {p.displayName}
@@ -117,12 +122,12 @@ export default function CalendarPage() {
       </div>
 
       <div className="grid grid-cols-7 gap-px overflow-hidden rounded-xl border border-gray-200 bg-gray-200 dark:border-gray-800 dark:bg-gray-800">
-        {DAY_NAMES.map((d) => (
+        {DAY_KEYS.map((d) => (
           <div
             key={d}
             className="bg-gray-100 p-2 text-center text-xs font-semibold text-gray-500 dark:bg-gray-900"
           >
-            {d}
+            {t(`calendar.days.${d}`)}
           </div>
         ))}
         {cells.map((day) => {
@@ -140,7 +145,7 @@ export default function CalendarPage() {
                 className={`mb-1 inline-flex h-6 w-6 items-center justify-center rounded-full text-xs hover:bg-gray-100 dark:hover:bg-gray-800 ${
                   ymd(day) === today ? "bg-brand-600 font-bold text-white" : "text-gray-500"
                 }`}
-                title="Nuovo post in questo giorno"
+                title={t("calendar.newPostOnDay")}
               >
                 {day.getDate()}
               </Link>
@@ -166,11 +171,11 @@ export default function CalendarPage() {
                         );
                       })}
                     </span>
-                    <span className="truncate">{p.title || p.body.slice(0, 30) || "(post)"}</span>
+                    <span className="truncate">{p.title || p.body.slice(0, 30) || t("calendar.emptyPost")}</span>
                     <button
                       onClick={(e) => duplicate(e, p.id)}
                       className="ml-1 hidden text-gray-400 hover:text-gray-700 group-hover:inline"
-                      title="Duplica"
+                      title={t("calendar.duplicate")}
                     >
                       ⧉
                     </button>
@@ -181,10 +186,7 @@ export default function CalendarPage() {
           );
         })}
       </div>
-      <p className="text-xs text-gray-500">
-        💡 Trascina un post su un altro giorno per riprogrammarlo · clicca sul numero del giorno per
-        creare un post in quella data.
-      </p>
+      <p className="text-xs text-gray-500">{t("calendar.hint")}</p>
     </div>
   );
 }

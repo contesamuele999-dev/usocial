@@ -6,10 +6,12 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api, fmtDate, retryInfo, type PlatformInfo } from "@/lib/client";
+import { useI18n } from "@/lib/i18n";
 import type { LogEntry, Post } from "@/types";
 import { StatusBadge } from "@/components/PostCard";
 
 export default function HistoryPage() {
+  const { t } = useI18n();
   const [tab, setTab] = useState<"posts" | "logs">("posts");
   const [posts, setPosts] = useState<Post[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -25,68 +27,70 @@ export default function HistoryPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold">Cronologia</h1>
+      <h1 className="text-2xl font-bold">{t("history.title")}</h1>
       <div className="flex gap-2">
         <button
           className={tab === "posts" ? "btn-primary" : "btn-secondary"}
           onClick={() => setTab("posts")}
         >
-          📤 Pubblicazioni
+          {t("history.tabPosts")}
         </button>
         <button
           className={tab === "logs" ? "btn-primary" : "btn-secondary"}
           onClick={() => setTab("logs")}
         >
-          📜 Log
+          {t("history.tabLogs")}
         </button>
       </div>
 
       {tab === "posts" && (
         <div className="space-y-3">
-          {posts.length === 0 && <p className="text-sm text-gray-500">Nessuna pubblicazione.</p>}
+          {posts.length === 0 && <p className="text-sm text-gray-500">{t("history.noPublications")}</p>}
           {posts.map((p) => (
             <div key={p.id} className="card">
               <div className="mb-2 flex flex-wrap items-center gap-2">
                 <StatusBadge status={p.status} />
                 <Link href={`/posts/${p.id}`} className="font-medium hover:underline">
-                  {p.title || p.body.slice(0, 60) || `Post #${p.id}`}
+                  {p.title || p.body.slice(0, 60) || t("history.postFallback", { id: p.id })}
                 </Link>
               </div>
               <table className="w-full text-sm">
                 <tbody>
-                  {p.targets.map((t) => {
-                    const info = platforms.find((x) => x.platform === t.platform);
+                  {p.targets.map((tgt) => {
+                    const info = platforms.find((x) => x.platform === tgt.platform);
                     return (
-                      <tr key={t.platform} className="border-t border-gray-100 dark:border-gray-800">
+                      <tr key={tgt.platform} className="border-t border-gray-100 dark:border-gray-800">
                         <td className="py-1.5 pr-2">
                           <span className="flex items-center gap-2">
                             <span
                               className="h-2.5 w-2.5 rounded-full"
                               style={{ backgroundColor: info?.color || "#999" }}
                             />
-                            {info?.displayName || t.platform}
+                            {info?.displayName || tgt.platform}
                           </span>
                         </td>
                         <td className="py-1.5 pr-2">
-                          <StatusBadge status={t.status} />
+                          <StatusBadge status={tgt.status} />
                         </td>
                         <td className="py-1.5 pr-2 text-xs text-gray-500">
-                          {t.publishedAt
-                            ? fmtDate(t.publishedAt)
-                            : t.attempts > 0
-                              ? `${t.attempts} tentativ${t.attempts === 1 ? "o" : "i"}`
+                          {tgt.publishedAt
+                            ? fmtDate(tgt.publishedAt)
+                            : tgt.attempts > 0
+                              ? t(tgt.attempts === 1 ? "history.attemptsOne" : "history.attemptsMany", {
+                                  count: tgt.attempts,
+                                })
                               : ""}
                         </td>
                         <td className="py-1.5 text-right">
-                          {t.externalUrl ? (
-                            <a href={t.externalUrl} target="_blank" className="text-brand-600 hover:underline">
-                              Apri ↗
+                          {tgt.externalUrl ? (
+                            <a href={tgt.externalUrl} target="_blank" className="text-brand-600 hover:underline">
+                              {t("common.open")}
                             </a>
-                          ) : retryInfo(t) ? (
-                            <span className="text-xs text-amber-600">⏳ {retryInfo(t)}</span>
-                          ) : t.error ? (
-                            <span className="block max-w-64 truncate text-xs text-red-500" title={t.error}>
-                              {t.error}
+                          ) : retryInfo(tgt, t) ? (
+                            <span className="text-xs text-amber-600">⏳ {retryInfo(tgt, t)}</span>
+                          ) : tgt.error ? (
+                            <span className="block max-w-64 truncate text-xs text-red-500" title={tgt.error}>
+                              {tgt.error}
                             </span>
                           ) : null}
                         </td>
@@ -105,10 +109,10 @@ export default function HistoryPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-xs text-gray-500">
-                <th className="py-1 pr-3">Quando</th>
-                <th className="py-1 pr-3">Livello</th>
-                <th className="py-1 pr-3">Modulo</th>
-                <th className="py-1">Messaggio</th>
+                <th className="py-1 pr-3">{t("history.colWhen")}</th>
+                <th className="py-1 pr-3">{t("history.colLevel")}</th>
+                <th className="py-1 pr-3">{t("history.colModule")}</th>
+                <th className="py-1">{t("history.colMessage")}</th>
               </tr>
             </thead>
             <tbody>
@@ -135,7 +139,7 @@ export default function HistoryPage() {
                     {l.message}
                     {l.detail && (
                       <details className="mt-1">
-                        <summary className="cursor-pointer text-xs text-gray-400">dettagli</summary>
+                        <summary className="cursor-pointer text-xs text-gray-400">{t("history.details")}</summary>
                         <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-gray-50 p-2 text-xs dark:bg-gray-900">
                           {l.detail}
                         </pre>

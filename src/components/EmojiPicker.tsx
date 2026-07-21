@@ -3,6 +3,7 @@
  * Picker emoji minimale: griglia delle emoji più usate sui social.
  */
 import { useState } from "react";
+import { useI18n } from "@/lib/i18n";
 
 const EMOJI = [
   "😀", "😂", "😍", "🤩", "😎", "🥳", "😢", "😮", "🤔", "🙌",
@@ -12,6 +13,7 @@ const EMOJI = [
 ];
 
 export function EmojiPicker({ onPick }: { onPick: (emoji: string) => void }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   return (
     <div className="relative inline-block">
@@ -19,7 +21,7 @@ export function EmojiPicker({ onPick }: { onPick: (emoji: string) => void }) {
         type="button"
         onClick={() => setOpen((o) => !o)}
         className="btn-secondary px-3 py-1.5"
-        title="Inserisci emoji"
+        title={t("emoji.insert")}
       >
         😊
       </button>

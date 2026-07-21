@@ -4,10 +4,12 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/client";
+import { useI18n, type TFunc } from "@/lib/i18n";
 import type { MediaItem } from "@/types";
 import { MediaThumb, mediaUrl } from "@/components/MediaPicker";
 
 export default function MediaPage() {
+  const { t } = useI18n();
   const [items, setItems] = useState<MediaItem[]>([]);
   const [folders, setFolders] = useState<string[]>([]);
   const [q, setQ] = useState("");
@@ -59,13 +61,13 @@ export default function MediaPage() {
   };
 
   const remove = async (item: MediaItem) => {
-    if (!confirm(`Eliminare "${item.originalName}"?`)) return;
+    if (!confirm(t("media.confirmDelete", { name: item.originalName }))) return;
     try {
       await api(`/api/media/${item.id}`, { method: "DELETE" });
     } catch (err) {
       // 409: il media è usato da post ancora in coda (bozze/programmati)
       const msg = String(err instanceof Error ? err.message : err);
-      if (!confirm(`${msg}\n\nEliminare comunque il media?`)) return;
+      if (!confirm(t("media.confirmForceDelete", { msg }))) return;
       await api(`/api/media/${item.id}?force=true`, { method: "DELETE" });
     }
     setPreview(null);
@@ -75,9 +77,9 @@ export default function MediaPage() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold">Libreria Media</h1>
+        <h1 className="text-2xl font-bold">{t("media.title")}</h1>
         <button className="btn-primary" onClick={() => fileRef.current?.click()} disabled={uploading}>
-          {uploading ? "Caricamento…" : "⬆️ Carica"}
+          {uploading ? t("media.uploading") : t("media.upload")}
         </button>
         <input
           ref={fileRef}
@@ -92,12 +94,12 @@ export default function MediaPage() {
       <div className="flex flex-wrap gap-2">
         <input
           className="input max-w-xs"
-          placeholder="🔍 Cerca per nome o tag…"
+          placeholder={t("media.searchPlaceholder")}
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
         <select className="input w-auto" value={folder} onChange={(e) => setFolder(e.target.value)}>
-          <option value="">Tutte le cartelle</option>
+          <option value="">{t("media.allFolders")}</option>
           {folders.map((f) => (
             <option key={f} value={f}>
               📁 {f}
@@ -123,9 +125,7 @@ export default function MediaPage() {
         }}
       >
         {items.length === 0 ? (
-          <p className="py-16 text-center text-sm text-gray-500">
-            Nessun media. Trascina qui immagini o video, oppure usa &quot;Carica&quot;.
-          </p>
+          <p className="py-16 text-center text-sm text-gray-500">{t("media.empty")}</p>
         ) : (
           <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6">
             {items.map((m) => (
@@ -167,9 +167,19 @@ export default function MediaPage() {
             <p className="mb-3 text-xs text-gray-500">
               {preview.mime} · {(preview.size / 1024 / 1024).toFixed(2)} MB
             </p>
-            <MetaForm item={preview} onSave={saveMeta} />
+            {preview.mime.startsWith("video/") && (
+              <VideoConverter
+                item={preview}
+                t={t}
+                onDone={(created) => {
+                  load();
+                  setPreview(created);
+                }}
+              />
+            )}
+            <MetaForm item={preview} onSave={saveMeta} t={t} />
             <button className="btn-danger mt-3 w-full" onClick={() => remove(preview)}>
-              🗑 Elimina
+              {t("media.delete")}
             </button>
           </div>
         </div>
@@ -178,12 +188,89 @@ export default function MediaPage() {
   );
 }
 
+function VideoConverter({
+  item,
+  t,
+  onDone,
+}: {
+  item: MediaItem;
+  t: TFunc;
+  onDone: (created: MediaItem) => void;
+}) {
+  const [ratio, setRatio] = useState<"keep" | "9:16" | "1:1" | "4:5" | "16:9">("keep");
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
+  const [muted, setMuted] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [error, setError] = useState("");
+
+  const convert = async () => {
+    setBusy(true);
+    setError("");
+    setMsg("");
+    try {
+      const body: Record<string, unknown> = { ratio, muted };
+      if (start) body.start = Number(start);
+      if (end) body.end = Number(end);
+      const created = await api<MediaItem>(`/api/media/${item.id}/convert`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      setMsg(t("video.converted"));
+      onDone(created);
+    } catch (err) {
+      setError(`${t("video.error")}: ${err instanceof Error ? err.message : err}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mb-3 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+      <p className="text-sm font-semibold">{t("video.convertTitle")}</p>
+      <p className="mt-0.5 text-xs text-gray-500">{t("video.hint")}</p>
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <label className="col-span-2 block text-xs text-gray-500">
+          {t("video.format")}
+          <select className="input mt-1" value={ratio} onChange={(e) => setRatio(e.target.value as typeof ratio)}>
+            <option value="keep">{t("video.keep")}</option>
+            <option value="9:16">{t("video.r916")}</option>
+            <option value="1:1">{t("video.r11")}</option>
+            <option value="4:5">{t("video.r45")}</option>
+            <option value="16:9">{t("video.r169")}</option>
+          </select>
+        </label>
+        <label className="block text-xs text-gray-500">
+          {t("video.trimStart")}
+          <input type="number" min={0} step="0.1" className="input mt-1" value={start} onChange={(e) => setStart(e.target.value)} />
+        </label>
+        <label className="block text-xs text-gray-500">
+          {t("video.trimEnd")}
+          <input type="number" min={0} step="0.1" className="input mt-1" value={end} onChange={(e) => setEnd(e.target.value)} />
+        </label>
+      </div>
+      <label className="mt-2 flex items-center gap-2 text-xs text-gray-500">
+        <input type="checkbox" className="accent-brand-600" checked={muted} onChange={(e) => setMuted(e.target.checked)} />
+        {t("video.muted")}
+      </label>
+      <button className="btn-primary mt-2 w-full text-sm" onClick={convert} disabled={busy}>
+        {busy ? t("video.converting") : t("video.convert")}
+      </button>
+      {msg && <p className="mt-1 text-xs text-green-600">{msg}</p>}
+      {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
+    </div>
+  );
+}
+
 function MetaForm({
   item,
   onSave,
+  t,
 }: {
   item: MediaItem;
   onSave: (item: MediaItem, folder: string, tags: string) => void;
+  t: TFunc;
 }) {
   const [folder, setFolder] = useState(item.folder);
   const [tags, setTags] = useState(item.tags);
@@ -195,18 +282,18 @@ function MetaForm({
     <div className="space-y-2">
       <input
         className="input"
-        placeholder="📁 Cartella (es. prodotti, dietro-le-quinte)"
+        placeholder={t("media.folderPlaceholder")}
         value={folder}
         onChange={(e) => setFolder(e.target.value)}
       />
       <input
         className="input"
-        placeholder="🏷️ Tag separati da virgola"
+        placeholder={t("media.tagsPlaceholder")}
         value={tags}
         onChange={(e) => setTags(e.target.value)}
       />
       <button className="btn-secondary w-full" onClick={() => onSave(item, folder, tags)}>
-        💾 Salva metadati
+        {t("media.saveMeta")}
       </button>
     </div>
   );

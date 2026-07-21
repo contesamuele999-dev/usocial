@@ -38,20 +38,27 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return json as T;
 }
 
-export const STATUS_LABELS: Record<string, { label: string; className: string }> = {
-  draft: { label: "Bozza", className: "bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300" },
-  scheduled: { label: "Programmato", className: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300" },
-  publishing: { label: "In pubblicazione…", className: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" },
-  published: { label: "Pubblicato", className: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300" },
-  partial: { label: "Parziale", className: "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300" },
-  failed: { label: "Fallito", className: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300" },
-  pending: { label: "In attesa", className: "bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300" },
+/** Classi CSS del badge per ogni stato. L'etichetta testuale è tradotta via i18n (`status.<stato>`). */
+export const STATUS_CLASSES: Record<string, string> = {
+  draft: "bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
+  scheduled: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
+  publishing: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
+  published: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300",
+  partial: "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300",
+  failed: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300",
+  pending: "bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
 };
 
-/** Formatta una data ISO in stile italiano compatto. */
+/** Locale corrente per la formattazione di date/ore, aggiornato dal LanguageProvider. */
+let dateLocale = "it-IT";
+export function setDateLocale(locale: string): void {
+  dateLocale = locale;
+}
+
+/** Formatta una data ISO in stile compatto secondo la lingua attiva. */
 export function fmtDate(iso: string | null): string {
   if (!iso) return "—";
-  return new Date(iso).toLocaleString("it-IT", {
+  return new Date(iso).toLocaleString(dateLocale, {
     day: "2-digit",
     month: "short",
     hour: "2-digit",
@@ -62,12 +69,19 @@ export function fmtDate(iso: string | null): string {
 /** Solo orario HH:MM. */
 export function fmtTime(iso: string | null): string {
   if (!iso) return "";
-  return new Date(iso).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+  return new Date(iso).toLocaleTimeString(dateLocale, { hour: "2-digit", minute: "2-digit" });
 }
 
-/** Etichetta per un target fallito con retry programmato (o null se non c'è retry). */
-export function retryInfo(target: { status: string; nextRetryAt: string | null }): string | null {
+/**
+ * Etichetta per un target fallito con retry programmato (o null se non c'è retry).
+ * `t` è la funzione di traduzione (i18n); se omessa usa un fallback neutro.
+ */
+export function retryInfo(
+  target: { status: string; nextRetryAt: string | null },
+  t?: (key: string, vars?: Record<string, string | number>) => string
+): string | null {
   if (target.status !== "failed" || !target.nextRetryAt) return null;
-  if (new Date(target.nextRetryAt).getTime() <= Date.now()) return "Nuovo tentativo a breve…";
-  return `Nuovo tentativo alle ${fmtTime(target.nextRetryAt)}`;
+  const soon = new Date(target.nextRetryAt).getTime() <= Date.now();
+  if (!t) return soon ? "…" : fmtTime(target.nextRetryAt);
+  return soon ? t("retry.soon") : t("retry.at", { time: fmtTime(target.nextRetryAt) });
 }

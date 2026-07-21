@@ -107,3 +107,59 @@ export interface AiRequest {
   title?: string;
   platform?: Platform;
 }
+
+/** ---------- Template (post e caroselli riutilizzabili) ---------- */
+export type TemplateKind = "post" | "carousel";
+
+/** Kit grafico usato per l'anteprima dei caroselli. */
+export interface BrandKit {
+  bg: string; // colore sfondo slide
+  text: string; // colore testo
+  accent: string; // colore accento (numeri, barre)
+  font: string; // font family CSS
+}
+
+export interface CarouselSlide {
+  headline: string;
+  body: string;
+}
+
+/** Struttura di un template "post": corpo con segnaposto {…}, hashtag, piattaforme. */
+export interface PostTemplateData {
+  body: string;
+  hashtags: string;
+  platforms: Platform[];
+}
+
+/** Struttura di un template "carosello": brand kit + slide + hashtag. */
+export interface CarouselTemplateData {
+  brand: BrandKit;
+  slides: CarouselSlide[];
+  hashtags: string;
+}
+
+export interface Template {
+  id: number;
+  userId: number;
+  name: string;
+  kind: TemplateKind;
+  data: PostTemplateData | CarouselTemplateData;
+  createdAt: string;
+}
+
+/** ---------- Live (dirette streaming) ---------- */
+export type LiveStatus = "created" | "live" | "ended" | "error";
+
+export interface Live {
+  id: number;
+  userId: number;
+  platform: Platform;
+  title: string;
+  description: string;
+  broadcastId: string; // id della diretta sulla piattaforma
+  ingestUrl: string; // server RTMP di ingest
+  streamKey: string; // chiave di streaming
+  watchUrl: string; // link per gli spettatori
+  status: LiveStatus;
+  createdAt: string;
+}

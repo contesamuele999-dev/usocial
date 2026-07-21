@@ -5,6 +5,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/client";
+import { useI18n } from "@/lib/i18n";
 import type { MediaItem } from "@/types";
 
 export function mediaUrl(m: MediaItem): string {
@@ -27,6 +28,7 @@ export function MediaPicker({
   selected: number[];
   onChange: (ids: number[]) => void;
 }) {
+  const { t } = useI18n();
   const [items, setItems] = useState<MediaItem[]>([]);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -61,14 +63,14 @@ export function MediaPicker({
   return (
     <div>
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-sm font-medium">Media ({selected.length} selezionati)</span>
+        <span className="text-sm font-medium">{t("mediaPicker.selected", { count: selected.length })}</span>
         <button
           type="button"
           className="btn-secondary px-3 py-1.5 text-xs"
           onClick={() => fileRef.current?.click()}
           disabled={uploading}
         >
-          {uploading ? "Caricamento…" : "⬆️ Carica file"}
+          {uploading ? t("mediaPicker.uploading") : t("mediaPicker.uploadFile")}
         </button>
         <input
           ref={fileRef}
@@ -80,7 +82,7 @@ export function MediaPicker({
         />
       </div>
       {items.length === 0 ? (
-        <p className="text-sm text-gray-500">Nessun media in libreria: caricane uno.</p>
+        <p className="text-sm text-gray-500">{t("mediaPicker.empty")}</p>
       ) : (
         <div className="grid max-h-48 grid-cols-4 gap-2 overflow-y-auto sm:grid-cols-6">
           {items.map((m) => {
@@ -103,7 +105,7 @@ export function MediaPicker({
                 )}
                 {m.mime.startsWith("video/") && (
                   <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1 text-[10px] text-white">
-                    ▶ video
+                    {t("mediaPicker.video")}
                   </span>
                 )}
               </button>

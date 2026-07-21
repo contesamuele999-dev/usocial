@@ -9,19 +9,22 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/client";
+import { useI18n, LANGS, type Lang } from "@/lib/i18n";
 import type { User } from "@/types";
 
 const NAV = [
-  { href: "/", label: "Dashboard", icon: "📊" },
-  { href: "/calendar", label: "Calendario", icon: "🗓️" },
-  { href: "/media", label: "Media", icon: "🖼️" },
-  { href: "/history", label: "Cronologia", icon: "📜" },
-  { href: "/settings", label: "Impostazioni", icon: "⚙️" },
+  { href: "/", key: "nav.dashboard", icon: "📊" },
+  { href: "/studio", key: "nav.studio", icon: "🧠" },
+  { href: "/calendar", key: "nav.calendar", icon: "🗓️" },
+  { href: "/media", key: "nav.media", icon: "🖼️" },
+  { href: "/history", key: "nav.history", icon: "📜" },
+  { href: "/settings", key: "nav.settings", icon: "⚙️" },
 ];
 
-const AUTH_PAGES = ["/login", "/register", "/privacy", "/terms"];
+const AUTH_PAGES = ["/login", "/register", "/privacy", "/terms", "/data-deletion"];
 
 function ThemeToggle() {
+  const { t } = useI18n();
   const [dark, setDark] = useState(false);
   useEffect(() => setDark(document.documentElement.classList.contains("dark")), []);
   const toggle = () => {
@@ -31,13 +34,35 @@ function ThemeToggle() {
     localStorage.setItem("theme", next ? "dark" : "light");
   };
   return (
-    <button onClick={toggle} className="btn-secondary w-full" title="Cambia tema">
-      {dark ? "☀️ Tema chiaro" : "🌙 Tema scuro"}
+    <button onClick={toggle} className="btn-secondary w-full" title={t("shell.themeToggle")}>
+      {dark ? t("shell.themeLight") : t("shell.themeDark")}
     </button>
   );
 }
 
+function LanguageSelector() {
+  const { lang, setLang, t } = useI18n();
+  return (
+    <label className="mt-2 block">
+      <span className="sr-only">{t("shell.language")}</span>
+      <select
+        className="input w-full text-sm"
+        value={lang}
+        onChange={(e) => setLang(e.target.value as Lang)}
+        title={t("shell.language")}
+      >
+        {LANGS.map((l) => (
+          <option key={l.code} value={l.code}>
+            {l.flag} {l.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function UserBox() {
+  const { t } = useI18n();
   const [user, setUser] = useState<User | null>(null);
   useEffect(() => {
     api<{ user: User | null }>("/api/auth/me")
@@ -57,7 +82,7 @@ function UserBox() {
         👤 {user.name || user.email}
       </p>
       <button onClick={logout} className="btn-secondary mt-1 w-full text-xs">
-        🚪 Esci
+        {t("shell.logout")}
       </button>
     </div>
   );
@@ -65,6 +90,7 @@ function UserBox() {
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { t } = useI18n();
 
   // Pagine di autenticazione: nessuna sidebar, solo il contenuto centrato.
   if (AUTH_PAGES.includes(pathname)) {
@@ -81,7 +107,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           </span>
         </Link>
         <Link href="/posts/new" className="btn-primary md:mb-4">
-          ✍️ <span className="hidden sm:inline">Nuovo Post</span>
+          ✍️ <span className="hidden sm:inline">{t("shell.newPost")}</span>
         </Link>
         <nav className="flex flex-1 flex-row gap-1 overflow-x-auto md:flex-col">
           {NAV.map((item) => (
@@ -95,11 +121,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
               }`}
             >
               <span>{item.icon}</span>
-              <span className="hidden sm:inline">{item.label}</span>
+              <span className="hidden sm:inline">{t(item.key)}</span>
             </Link>
           ))}
         </nav>
         <div className="hidden md:block">
+          <LanguageSelector />
           <ThemeToggle />
           <UserBox />
         </div>

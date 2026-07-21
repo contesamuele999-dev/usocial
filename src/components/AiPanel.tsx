@@ -5,18 +5,19 @@
  */
 import { useState } from "react";
 import { api } from "@/lib/client";
+import { useI18n } from "@/lib/i18n";
 import type { AiAction } from "@/types";
 
-const ACTIONS: { action: AiAction; label: string; target: "body" | "hashtags" | "show" }[] = [
-  { action: "improve", label: "✨ Migliora leggibilità", target: "body" },
-  { action: "short", label: "✂️ Versione corta", target: "body" },
-  { action: "long", label: "📝 Versione lunga", target: "body" },
-  { action: "to_short_post", label: "⚡ Testo lungo → post breve", target: "body" },
-  { action: "to_linkedin_article", label: "💼 Post → articolo LinkedIn", target: "body" },
-  { action: "youtube_description", label: "▶️ Descrizione YouTube", target: "body" },
-  { action: "hashtags", label: "#️⃣ Suggerisci hashtag", target: "hashtags" },
-  { action: "titles", label: "🎯 5 titoli efficaci", target: "show" },
-  { action: "cta", label: "📣 Genera CTA", target: "show" },
+const ACTIONS: { action: AiAction; target: "body" | "hashtags" | "show" }[] = [
+  { action: "improve", target: "body" },
+  { action: "short", target: "body" },
+  { action: "long", target: "body" },
+  { action: "to_short_post", target: "body" },
+  { action: "to_linkedin_article", target: "body" },
+  { action: "youtube_description", target: "body" },
+  { action: "hashtags", target: "hashtags" },
+  { action: "titles", target: "show" },
+  { action: "cta", target: "show" },
 ];
 
 export function AiPanel({
@@ -30,13 +31,14 @@ export function AiPanel({
   onApplyBody: (text: string) => void;
   onApplyHashtags: (text: string) => void;
 }) {
+  const { t } = useI18n();
   const [busy, setBusy] = useState<AiAction | null>(null);
   const [result, setResult] = useState<{ action: AiAction; text: string; target: string } | null>(null);
   const [error, setError] = useState("");
 
   const run = async (action: AiAction, target: string) => {
     if (!text.trim()) {
-      setError("Scrivi prima il testo del post.");
+      setError(t("aiPanel.writeFirst"));
       return;
     }
     setBusy(action);
@@ -56,7 +58,7 @@ export function AiPanel({
 
   return (
     <div className="card">
-      <h3 className="mb-2 font-semibold">🤖 Assistente AI</h3>
+      <h3 className="mb-2 font-semibold">{t("aiPanel.title")}</h3>
       <div className="flex flex-wrap gap-2">
         {ACTIONS.map((a) => (
           <button
@@ -66,7 +68,7 @@ export function AiPanel({
             disabled={busy !== null}
             onClick={() => run(a.action, a.target)}
           >
-            {busy === a.action ? "…" : a.label}
+            {busy === a.action ? "…" : t(`aiPanel.${a.action}`)}
           </button>
         ))}
       </div>
@@ -77,16 +79,16 @@ export function AiPanel({
           <div className="mt-2 flex gap-2">
             {result.target === "body" && (
               <button type="button" className="btn-primary px-3 py-1 text-xs" onClick={() => { onApplyBody(result.text); setResult(null); }}>
-                Sostituisci testo
+                {t("aiPanel.replaceBody")}
               </button>
             )}
             {result.target === "hashtags" && (
               <button type="button" className="btn-primary px-3 py-1 text-xs" onClick={() => { onApplyHashtags(result.text); setResult(null); }}>
-                Usa questi hashtag
+                {t("aiPanel.useHashtags")}
               </button>
             )}
             <button type="button" className="btn-secondary px-3 py-1 text-xs" onClick={() => setResult(null)}>
-              Chiudi
+              {t("aiPanel.close")}
             </button>
           </div>
         </div>

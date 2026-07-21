@@ -6,7 +6,18 @@
  * (scheduler / publisher), che risalgono all'utente dal post stesso.
  */
 import { getDb } from "./db";
-import type { Account, MediaItem, Platform, Post, PostStatus, PostTarget } from "@/types";
+import type {
+  Account,
+  Live,
+  LiveStatus,
+  MediaItem,
+  Platform,
+  Post,
+  PostStatus,
+  PostTarget,
+  Template,
+  TemplateKind,
+} from "@/types";
 
 // ---------- mapping righe DB -> tipi ----------
 
@@ -477,6 +488,157 @@ export function listLogs(userId: number, limit = 200) {
        FROM logs WHERE user_id = ? OR user_id IS NULL ORDER BY id DESC LIMIT ?`
     )
     .all(userId, limit);
+}
+
+// ---------- TEMPLATE (post e caroselli) ----------
+
+function rowToTemplate(r: Record<string, unknown>): Template {
+  let data: Template["data"];
+  try {
+    data = JSON.parse((r.data as string) || "{}");
+  } catch {
+    data = {} as Template["data"];
+  }
+  return {
+    id: r.id as number,
+    userId: r.user_id as number,
+    name: r.name as string,
+    kind: r.kind as TemplateKind,
+    data,
+    createdAt: r.created_at as string,
+  };
+}
+
+export function listTemplates(userId: number, kind?: TemplateKind): Template[] {
+  const db = getDb();
+  const rows = (
+    kind
+      ? db.prepare("SELECT * FROM templates WHERE user_id = ? AND kind = ? ORDER BY name")
+          .all(userId, kind)
+      : db.prepare("SELECT * FROM templates WHERE user_id = ? ORDER BY kind, name").all(userId)
+  ) as Record<string, unknown>[];
+  return rows.map(rowToTemplate);
+}
+
+export function getTemplate(id: number, userId: number): Template | null {
+  const r = getDb()
+    .prepare("SELECT * FROM templates WHERE id = ? AND user_id = ?")
+    .get(id, userId) as Record<string, unknown> | undefined;
+  return r ? rowToTemplate(r) : null;
+}
+
+export function createTemplate(
+  userId: number,
+  name: string,
+  kind: TemplateKind,
+  data: Template["data"]
+): Template {
+  const info = getDb()
+    .prepare("INSERT INTO templates (user_id, name, kind, data) VALUES (?, ?, ?, ?)")
+    .run(userId, name, kind, JSON.stringify(data));
+  return getTemplate(info.lastInsertRowid as number, userId)!;
+}
+
+export function updateTemplate(
+  id: number,
+  userId: number,
+  name: string,
+  data: Template["data"]
+): Template | null {
+  if (!getTemplate(id, userId)) return null;
+  getDb()
+    .prepare("UPDATE templates SET name = ?, data = ? WHERE id = ? AND user_id = ?")
+    .run(name, JSON.stringify(data), id, userId);
+  return getTemplate(id, userId);
+}
+
+export function deleteTemplate(id: number, userId: number): boolean {
+  return (
+    getDb().prepare("DELETE FROM templates WHERE id = ? AND user_id = ?").run(id, userId).changes > 0
+  );
+}
+
+// ---------- LIVE (dirette) ----------
+
+function rowToLive(r: Record<string, unknown>): Live {
+  return {
+    id: r.id as number,
+    userId: r.user_id as number,
+    platform: r.platform as Platform,
+    title: r.title as string,
+    description: r.description as string,
+    broadcastId: r.broadcast_id as string,
+    ingestUrl: r.ingest_url as string,
+    streamKey: r.stream_key as string,
+    watchUrl: r.watch_url as string,
+    status: r.status as LiveStatus,
+    createdAt: r.created_at as string,
+  };
+}
+
+export function listLives(userId: number): Live[] {
+  const rows = getDb()
+    .prepare("SELECT * FROM lives WHERE user_id = ? ORDER BY id DESC")
+    .all(userId) as Record<string, unknown>[];
+  return rows.map(rowToLive);
+}
+
+export function getLive(id: number, userId: number): Live | null {
+  const r = getDb()
+    .prepare("SELECT * FROM lives WHERE id = ? AND user_id = ?")
+    .get(id, userId) as Record<string, unknown> | undefined;
+  return r ? rowToLive(r) : null;
+}
+
+export function createLive(
+  userId: number,
+  data: Pick<Live, "platform" | "title" | "description" | "broadcastId" | "ingestUrl" | "streamKey" | "watchUrl">
+): Live {
+  const info = getDb()
+    .prepare(
+      `INSERT INTO lives (user_id, platform, title, description, broadcast_id, ingest_url, stream_key, watch_url, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'created')`
+    )
+    .run(
+      userId,
+      data.platform,
+      data.title,
+      data.description,
+      data.broadcastId,
+      data.ingestUrl,
+      data.streamKey,
+      data.watchUrl
+    );
+  return getLive(info.lastInsertRowid as number, userId)!;
+}
+
+export function setLiveStatus(id: number, userId: number, status: LiveStatus): void {
+  getDb().prepare("UPDATE lives SET status = ? WHERE id = ? AND user_id = ?").run(status, id, userId);
+}
+
+export function deleteLive(id: number, userId: number): boolean {
+  return getDb().prepare("DELETE FROM lives WHERE id = ? AND user_id = ?").run(id, userId).changes > 0;
+}
+
+// ---------- CANCELLAZIONE ACCOUNT (GDPR / Meta data deletion) ----------
+
+/**
+ * Cancella un utente e TUTTI i suoi dati. Grazie ai vincoli ON DELETE CASCADE,
+ * eliminare la riga `users` propaga a posts (→ post_targets, post_media), media,
+ * accounts, settings e sessions. I log (senza FK) e i file media su disco vanno
+ * rimossi a parte: ritorna i filename dei media così che il chiamante li cancelli.
+ */
+export function deleteUser(userId: number): string[] {
+  const db = getDb();
+  const files = (
+    db.prepare("SELECT filename FROM media WHERE user_id = ?").all(userId) as { filename: string }[]
+  ).map((r) => r.filename);
+  const tx = db.transaction(() => {
+    db.prepare("DELETE FROM logs WHERE user_id = ?").run(userId);
+    db.prepare("DELETE FROM users WHERE id = ?").run(userId);
+  });
+  tx();
+  return files;
 }
 
 // ---------- EXPORT ----------

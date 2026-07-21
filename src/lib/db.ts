@@ -104,12 +104,37 @@ CREATE TABLE IF NOT EXISTS settings (
   PRIMARY KEY (user_id, key)
 );
 
+CREATE TABLE IF NOT EXISTS templates (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL DEFAULT '',
+  kind TEXT NOT NULL DEFAULT 'post',
+  data TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+CREATE TABLE IF NOT EXISTS lives (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  platform TEXT NOT NULL,
+  title TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  broadcast_id TEXT NOT NULL DEFAULT '',
+  ingest_url TEXT NOT NULL DEFAULT '',
+  stream_key TEXT NOT NULL DEFAULT '',
+  watch_url TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'created',
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_posts_user ON posts(user_id);
 CREATE INDEX IF NOT EXISTS idx_posts_status ON posts(status);
 CREATE INDEX IF NOT EXISTS idx_posts_scheduled ON posts(scheduled_at);
 CREATE INDEX IF NOT EXISTS idx_targets_post ON post_targets(post_id);
 CREATE INDEX IF NOT EXISTS idx_targets_retry ON post_targets(status, next_retry_at);
 CREATE INDEX IF NOT EXISTS idx_media_user ON media(user_id);
+CREATE INDEX IF NOT EXISTS idx_templates_user ON templates(user_id);
+CREATE INDEX IF NOT EXISTS idx_lives_user ON lives(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_logs_created ON logs(created_at);
 `;

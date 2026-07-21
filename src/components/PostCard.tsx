@@ -4,7 +4,8 @@
  */
 import Link from "next/link";
 import type { Post } from "@/types";
-import { fmtDate, STATUS_LABELS, type PlatformInfo } from "@/lib/client";
+import { fmtDate, STATUS_CLASSES, type PlatformInfo } from "@/lib/client";
+import { useI18n } from "@/lib/i18n";
 
 export function PlatformDot({ platform, platforms }: { platform: string; platforms: PlatformInfo[] }) {
   const info = platforms.find((p) => p.platform === platform);
@@ -18,8 +19,9 @@ export function PlatformDot({ platform, platforms }: { platform: string; platfor
 }
 
 export function StatusBadge({ status }: { status: string }) {
-  const s = STATUS_LABELS[status] || STATUS_LABELS.draft;
-  return <span className={`badge ${s.className}`}>{s.label}</span>;
+  const { t } = useI18n();
+  const className = STATUS_CLASSES[status] || STATUS_CLASSES.draft;
+  return <span className={`badge ${className}`}>{t(`status.${status}`)}</span>;
 }
 
 export function PostCard({
@@ -33,6 +35,7 @@ export function PostCard({
   onDuplicate?: (id: number) => void;
   onDelete?: (id: number) => void;
 }) {
+  const { t } = useI18n();
   return (
     <div className="card flex items-start justify-between gap-3">
       <div className="min-w-0 flex-1">
@@ -46,7 +49,7 @@ export function PostCard({
               ))}
             </span>
           </div>
-          <p className="truncate font-medium">{post.title || post.body.slice(0, 80) || "(vuoto)"}</p>
+          <p className="truncate font-medium">{post.title || post.body.slice(0, 80) || t("postCard.empty")}</p>
           {post.title && (
             <p className="truncate text-sm text-gray-500 dark:text-gray-400">
               {post.body.slice(0, 100)}
@@ -64,7 +67,7 @@ export function PostCard({
           <button
             onClick={() => onDuplicate(post.id)}
             className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800"
-            title="Duplica"
+            title={t("postCard.duplicate")}
           >
             ⧉
           </button>
@@ -73,7 +76,7 @@ export function PostCard({
           <button
             onClick={() => onDelete(post.id)}
             className="rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950"
-            title="Elimina"
+            title={t("postCard.delete")}
           >
             🗑
           </button>

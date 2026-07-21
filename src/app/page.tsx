@@ -5,10 +5,12 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { api, type PlatformInfo } from "@/lib/client";
+import { useI18n } from "@/lib/i18n";
 import type { Post } from "@/types";
 import { PostCard } from "@/components/PostCard";
 
 export default function Dashboard() {
+  const { t } = useI18n();
   const [posts, setPosts] = useState<Post[]>([]);
   const [platforms, setPlatforms] = useState<PlatformInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -33,7 +35,7 @@ export default function Dashboard() {
     load();
   };
   const remove = async (id: number) => {
-    if (!confirm("Eliminare questo post?")) return;
+    if (!confirm(t("dashboard.confirmDelete"))) return;
     await api(`/api/posts/${id}`, { method: "DELETE" });
     load();
   };
@@ -51,24 +53,24 @@ export default function Dashboard() {
       )
     : [];
 
-  if (loading) return <p className="text-gray-500">Caricamento…</p>;
+  if (loading) return <p className="text-gray-500">{t("common.loading")}</p>;
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold">Dashboard</h1>
+        <h1 className="text-2xl font-bold">{t("dashboard.title")}</h1>
         <Link href="/posts/new" className="btn-primary">
-          ✍️ Nuovo Post
+          {t("dashboard.newPost")}
         </Link>
       </div>
 
       {/* Statistiche rapide */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
-          { label: "Programmati", value: scheduled.length, icon: "🗓️" },
-          { label: "Bozze", value: drafts.length, icon: "📝" },
-          { label: "Pubblicati", value: posts.filter((p) => p.status === "published").length, icon: "✅" },
-          { label: "Account connessi", value: `${connected}/${platforms.length}`, icon: "🔗" },
+          { label: t("dashboard.statScheduled"), value: scheduled.length, icon: "🗓️" },
+          { label: t("dashboard.statDrafts"), value: drafts.length, icon: "📝" },
+          { label: t("dashboard.statPublished"), value: posts.filter((p) => p.status === "published").length, icon: "✅" },
+          { label: t("dashboard.statAccounts"), value: `${connected}/${platforms.length}`, icon: "🔗" },
         ].map((s) => (
           <div key={s.label} className="card">
             <div className="text-2xl">{s.icon}</div>
@@ -80,18 +82,18 @@ export default function Dashboard() {
 
       {connected === 0 && (
         <div className="card border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/40">
-          ⚠️ Nessun account social connesso.{" "}
+          {t("dashboard.noAccounts")}
           <Link href="/settings" className="font-medium text-brand-600 hover:underline">
-            Vai alle Impostazioni
-          </Link>{" "}
-          per collegare i tuoi account.
+            {t("dashboard.goToSettings")}
+          </Link>
+          {t("dashboard.toConnect")}
         </div>
       )}
 
       {/* Ricerca full-text */}
       <input
         className="input"
-        placeholder="🔍 Cerca tra i tuoi post (titolo, testo, hashtag)…"
+        placeholder={t("dashboard.searchPlaceholder")}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />
@@ -99,10 +101,10 @@ export default function Dashboard() {
       {q ? (
         <section>
           <h2 className="mb-2 text-lg font-semibold">
-            🔍 Risultati ({results.length})
+            {t("dashboard.results", { count: results.length })}
           </h2>
           {results.length === 0 ? (
-            <p className="text-sm text-gray-500">Nessun post corrisponde a &quot;{query}&quot;.</p>
+            <p className="text-sm text-gray-500">{t("dashboard.noResults", { query })}</p>
           ) : (
             <div className="space-y-2">
               {results.map((p) => (
@@ -115,13 +117,13 @@ export default function Dashboard() {
         <>
       <section>
         <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">🗓️ In programma</h2>
+          <h2 className="text-lg font-semibold">{t("dashboard.scheduledTitle")}</h2>
           <Link href="/calendar" className="text-sm text-brand-600 hover:underline">
-            Apri calendario →
+            {t("dashboard.openCalendar")}
           </Link>
         </div>
         {scheduled.length === 0 ? (
-          <p className="text-sm text-gray-500">Nessun post programmato.</p>
+          <p className="text-sm text-gray-500">{t("dashboard.noScheduled")}</p>
         ) : (
           <div className="space-y-2">
             {scheduled.map((p) => (
@@ -132,9 +134,9 @@ export default function Dashboard() {
       </section>
 
       <section>
-        <h2 className="mb-2 text-lg font-semibold">📝 Bozze</h2>
+        <h2 className="mb-2 text-lg font-semibold">{t("dashboard.draftsTitle")}</h2>
         {drafts.length === 0 ? (
-          <p className="text-sm text-gray-500">Nessuna bozza.</p>
+          <p className="text-sm text-gray-500">{t("dashboard.noDrafts")}</p>
         ) : (
           <div className="space-y-2">
             {drafts.map((p) => (
@@ -146,13 +148,13 @@ export default function Dashboard() {
 
       <section>
         <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">✅ Ultimi pubblicati</h2>
+          <h2 className="text-lg font-semibold">{t("dashboard.publishedTitle")}</h2>
           <Link href="/history" className="text-sm text-brand-600 hover:underline">
-            Cronologia completa →
+            {t("dashboard.fullHistory")}
           </Link>
         </div>
         {published.length === 0 ? (
-          <p className="text-sm text-gray-500">Ancora nessuna pubblicazione.</p>
+          <p className="text-sm text-gray-500">{t("dashboard.noPublished")}</p>
         ) : (
           <div className="space-y-2">
             {published.map((p) => (

@@ -6,6 +6,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { api, fmtDate, retryInfo, type PlatformInfo } from "@/lib/client";
+import { useI18n } from "@/lib/i18n";
 import type { Platform, Post } from "@/types";
 import { EmojiPicker } from "./EmojiPicker";
 import { MediaPicker } from "./MediaPicker";
@@ -25,6 +26,7 @@ function localToIso(local: string): string | null {
 
 export function PostEditor({ initial }: { initial: Post | null }) {
   const router = useRouter();
+  const { t } = useI18n();
   const [platforms, setPlatforms] = useState<PlatformInfo[]>([]);
   const [title, setTitle] = useState(initial?.title || "");
   const [body, setBody] = useState(initial?.body || "");
@@ -72,7 +74,7 @@ export function PostEditor({ initial }: { initial: Post | null }) {
 
   const doSave = async (status: "draft" | "scheduled") => {
     if (status === "scheduled" && !scheduled) {
-      setMessage({ ok: false, text: "Imposta data e ora per programmare il post." });
+      setMessage({ ok: false, text: t("editor.setDateTime") });
       return;
     }
     setBusy(status);
@@ -82,7 +84,10 @@ export function PostEditor({ initial }: { initial: Post | null }) {
       setPost(saved);
       setMessage({
         ok: true,
-        text: status === "draft" ? "Bozza salvata." : `Programmato per ${fmtDate(saved.scheduledAt)}.`,
+        text:
+          status === "draft"
+            ? t("editor.draftSaved")
+            : t("editor.scheduledFor", { date: fmtDate(saved.scheduledAt) }),
       });
       if (!post) router.replace(`/posts/${saved.id}`);
     } catch (err) {
@@ -94,10 +99,10 @@ export function PostEditor({ initial }: { initial: Post | null }) {
 
   const doPublish = async () => {
     if (selected.length === 0) {
-      setMessage({ ok: false, text: "Seleziona almeno una piattaforma." });
+      setMessage({ ok: false, text: t("editor.selectPlatform") });
       return;
     }
-    if (!confirm(`Pubblicare ORA su: ${selected.join(", ")}?`)) return;
+    if (!confirm(t("editor.confirmPublish", { platforms: selected.join(", ") }))) return;
     setBusy("publish");
     setMessage(null);
     try {
@@ -109,7 +114,9 @@ export function PostEditor({ initial }: { initial: Post | null }) {
       const failures = published.targets.filter((t) => t.error).map((t) => `${t.platform}: ${t.error}`);
       setMessage({
         ok,
-        text: ok ? "✅ Pubblicato su tutte le piattaforme!" : `Esito parziale — ${failures.join(" · ")}`,
+        text: ok
+          ? t("editor.publishedAll")
+          : t("editor.partialOutcome", { failures: failures.join(" · ") }),
       });
       if (!window.location.pathname.includes(`/posts/${saved.id}`)) {
         router.replace(`/posts/${saved.id}`);
@@ -123,7 +130,7 @@ export function PostEditor({ initial }: { initial: Post | null }) {
 
   const doAdapt = async () => {
     if (!post) {
-      setMessage({ ok: false, text: "Salva prima il post (anche come bozza)." });
+      setMessage({ ok: false, text: t("editor.saveFirst") });
       return;
     }
     setBusy("adapt");
@@ -132,7 +139,7 @@ export function PostEditor({ initial }: { initial: Post | null }) {
       await save(post.status === "scheduled" ? "scheduled" : "draft");
       const updated = await api<Post>(`/api/posts/${post.id}/adapt`, { method: "POST" });
       setPost(updated);
-      setMessage({ ok: true, text: "Testi adattati per ogni piattaforma (vedi anteprime sotto)." });
+      setMessage({ ok: true, text: t("editor.adaptedDone") });
     } catch (err) {
       setMessage({ ok: false, text: String(err instanceof Error ? err.message : err) });
     } finally {
@@ -149,14 +156,14 @@ export function PostEditor({ initial }: { initial: Post | null }) {
         <div className="card space-y-3">
           <input
             className="input text-lg font-semibold"
-            placeholder="Titolo (usato da YouTube/TikTok, opzionale altrove)"
+            placeholder={t("editor.titlePlaceholder")}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
           />
           <textarea
             ref={bodyRef}
             className="input min-h-48 resize-y font-normal"
-            placeholder="Scrivi qui il tuo contenuto una sola volta…"
+            placeholder={t("editor.bodyPlaceholder")}
             value={body}
             onChange={(e) => setBody(e.target.value)}
           />
@@ -164,11 +171,11 @@ export function PostEditor({ initial }: { initial: Post | null }) {
             <EmojiPicker onPick={insertEmoji} />
             <input
               className="input flex-1"
-              placeholder="#hashtag #separati #da #spazi"
+              placeholder={t("editor.hashtagsPlaceholder")}
               value={hashtags}
               onChange={(e) => setHashtags(e.target.value)}
             />
-            <span className="text-xs text-gray-500">{bodyLen} caratteri</span>
+            <span className="text-xs text-gray-500">{t("editor.chars", { n: bodyLen })}</span>
           </div>
         </div>
 
@@ -186,7 +193,7 @@ export function PostEditor({ initial }: { initial: Post | null }) {
         {/* Anteprime adattate per piattaforma */}
         {post && post.targets.some((t) => t.adaptedBody) && (
           <div className="card">
-            <h3 className="mb-2 font-semibold">Versioni adattate</h3>
+            <h3 className="mb-2 font-semibold">{t("editor.adaptedVersions")}</h3>
             <div className="space-y-3">
               {post.targets
                 .filter((t) => t.adaptedBody)
@@ -212,7 +219,7 @@ export function PostEditor({ initial }: { initial: Post | null }) {
       {/* Colonna laterale: piattaforme + programmazione + azioni */}
       <div className="space-y-4">
         <div className="card">
-          <h3 className="mb-2 font-semibold">Piattaforme</h3>
+          <h3 className="mb-2 font-semibold">{t("editor.platforms")}</h3>
           <div className="space-y-2">
             {platforms.map((p) => {
               const target = post?.targets.find((t) => t.platform === p.platform);
@@ -235,7 +242,7 @@ export function PostEditor({ initial }: { initial: Post | null }) {
                   <span className="flex-1 text-sm font-medium">{p.displayName}</span>
                   {target && target.status !== "pending" && <StatusBadge status={target.status} />}
                   {!p.connected && (
-                    <span className="text-xs text-amber-600" title="Account non connesso">
+                    <span className="text-xs text-amber-600" title={t("editor.accountNotConnected")}>
                       ⚠️
                     </span>
                   )}
@@ -249,12 +256,12 @@ export function PostEditor({ initial }: { initial: Post | null }) {
             onClick={doAdapt}
             disabled={busy !== "" || selected.length === 0}
           >
-            {busy === "adapt" ? "Adattamento in corso…" : "🤖 Adatta il testo a ogni piattaforma"}
+            {busy === "adapt" ? t("editor.adapting") : t("editor.adapt")}
           </button>
         </div>
 
         <div className="card">
-          <h3 className="mb-2 font-semibold">Programmazione</h3>
+          <h3 className="mb-2 font-semibold">{t("editor.scheduling")}</h3>
           <input
             type="datetime-local"
             className="input"
@@ -266,18 +273,18 @@ export function PostEditor({ initial }: { initial: Post | null }) {
         <div className="card space-y-2">
           {post && (
             <div className="mb-1 flex items-center justify-between text-sm">
-              <span className="text-gray-500">Stato</span>
+              <span className="text-gray-500">{t("editor.status")}</span>
               <StatusBadge status={post.status} />
             </div>
           )}
           <button className="btn-primary w-full" onClick={doPublish} disabled={busy !== ""}>
-            {busy === "publish" ? "Pubblicazione…" : "🚀 Pubblica ora"}
+            {busy === "publish" ? t("editor.publishing") : t("editor.publishNow")}
           </button>
           <button className="btn-secondary w-full" onClick={() => doSave("scheduled")} disabled={busy !== ""}>
-            {busy === "scheduled" ? "Salvataggio…" : "🗓️ Programma"}
+            {busy === "scheduled" ? t("editor.scheduleBusy") : t("editor.schedule")}
           </button>
           <button className="btn-secondary w-full" onClick={() => doSave("draft")} disabled={busy !== ""}>
-            {busy === "draft" ? "Salvataggio…" : "💾 Salva bozza"}
+            {busy === "draft" ? t("editor.saveBusy") : t("editor.saveDraft")}
           </button>
           {message && (
             <p className={`text-sm ${message.ok ? "text-green-600" : "text-red-500"}`}>{message.text}</p>
@@ -287,26 +294,26 @@ export function PostEditor({ initial }: { initial: Post | null }) {
         {/* Esiti per piattaforma */}
         {post && post.targets.some((t) => t.externalUrl || t.error) && (
           <div className="card">
-            <h3 className="mb-2 font-semibold">Esiti</h3>
+            <h3 className="mb-2 font-semibold">{t("editor.outcomes")}</h3>
             <ul className="space-y-2 text-sm">
-              {post.targets.map((t) => {
-                const retry = retryInfo(t);
+              {post.targets.map((tgt) => {
+                const retry = retryInfo(tgt, t);
                 return (
-                  <li key={t.platform} className="flex flex-col gap-0.5">
+                  <li key={tgt.platform} className="flex flex-col gap-0.5">
                     <div className="flex items-center justify-between gap-2">
-                      <span>{t.platform}</span>
-                      {t.externalUrl ? (
-                        <a href={t.externalUrl} target="_blank" className="text-brand-600 hover:underline">
-                          Apri ↗
+                      <span>{tgt.platform}</span>
+                      {tgt.externalUrl ? (
+                        <a href={tgt.externalUrl} target="_blank" className="text-brand-600 hover:underline">
+                          {t("common.open")}
                         </a>
                       ) : (
-                        <StatusBadge status={t.status} />
+                        <StatusBadge status={tgt.status} />
                       )}
                     </div>
                     {retry && <span className="text-xs text-amber-600">⏳ {retry}</span>}
-                    {t.status === "failed" && !t.nextRetryAt && t.error && (
-                      <span className="text-xs text-red-500" title={t.error}>
-                        Tentativi esauriti — usa &quot;Pubblica ora&quot; per riprovare
+                    {tgt.status === "failed" && !tgt.nextRetryAt && tgt.error && (
+                      <span className="text-xs text-red-500" title={tgt.error}>
+                        {t("editor.retriesExhausted")}
                       </span>
                     )}
                   </li>

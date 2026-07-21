@@ -12,7 +12,15 @@ import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
-const ALLOWED = ["image/jpeg", "image/png", "image/gif", "image/webp", "video/mp4", "video/quicktime"];
+const ALLOWED = [
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "video/mp4",
+  "video/quicktime",
+  "video/webm", // registrazioni in-app (MediaRecorder); conversione a mp4 in fase di montaggio
+];
 
 export const GET = withUser("media", async (req, _ctx, user) => {
   const url = new URL(req.url);

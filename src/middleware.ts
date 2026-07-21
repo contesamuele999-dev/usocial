@@ -14,7 +14,7 @@ import { SESSION_COOKIE } from "@/lib/constants";
 const PUBLIC_PAGES = ["/login", "/register"];
 // Pagine sempre accessibili, con o senza login (richieste anche dai revisori
 // delle piattaforme social, es. TikTok, che le visitano senza autenticarsi).
-const ALWAYS_PUBLIC = ["/privacy", "/terms"];
+const ALWAYS_PUBLIC = ["/privacy", "/terms", "/data-deletion"];
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;

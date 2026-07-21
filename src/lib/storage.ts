@@ -23,6 +23,18 @@ export function filePath(filename: string): string {
   return path.join(env.mediaDir, safe);
 }
 
+/** Genera un filename univoco e il relativo percorso (senza scrivere nulla). */
+export function newFilePath(ext: string): { filename: string; path: string } {
+  const clean = ext.replace(/^\./, "").toLowerCase();
+  const filename = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}.${clean}`;
+  return { filename, path: path.join(env.mediaDir, filename) };
+}
+
+/** Assicura che la cartella dei media esista. */
+export async function ensureMediaDir(): Promise<void> {
+  await fs.promises.mkdir(env.mediaDir, { recursive: true });
+}
+
 export async function readFile(filename: string): Promise<Buffer> {
   return fs.promises.readFile(filePath(filename));
 }

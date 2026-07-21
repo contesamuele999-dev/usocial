@@ -6,8 +6,10 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { api, fmtDate, type PlatformInfo } from "@/lib/client";
+import { useI18n } from "@/lib/i18n";
 
 function SettingsInner() {
+  const { t } = useI18n();
   const params = useSearchParams();
   const [platforms, setPlatforms] = useState<PlatformInfo[]>([]);
   const [verify, setVerify] = useState<Record<string, string>>({});
@@ -21,12 +23,12 @@ function SettingsInner() {
     load();
     const connected = params.get("connected");
     const error = params.get("error");
-    if (connected) setBanner({ ok: true, text: `✅ Account ${connected} connesso!` });
-    if (error) setBanner({ ok: false, text: `❌ Connessione fallita: ${error}` });
-  }, [load, params]);
+    if (connected) setBanner({ ok: true, text: t("settings.connected", { platform: connected }) });
+    if (error) setBanner({ ok: false, text: t("settings.connectFailed", { error }) });
+  }, [load, params, t]);
 
   const doVerify = async (platform: string) => {
-    setVerify((v) => ({ ...v, [platform]: "Verifica in corso…" }));
+    setVerify((v) => ({ ...v, [platform]: t("settings.verifying") }));
     try {
       const r = await api<{ ok: boolean; message: string }>(`/api/accounts/${platform}`, {
         method: "POST",
@@ -38,14 +40,14 @@ function SettingsInner() {
   };
 
   const disconnect = async (platform: string) => {
-    if (!confirm(`Disconnettere ${platform}?`)) return;
+    if (!confirm(t("settings.confirmDisconnect", { platform }))) return;
     await api(`/api/accounts/${platform}`, { method: "DELETE" });
     load();
   };
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Impostazioni</h1>
+      <h1 className="text-2xl font-bold">{t("settings.title")}</h1>
 
       {banner && (
         <div
@@ -61,7 +63,7 @@ function SettingsInner() {
 
       {/* Account social */}
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold">🔗 Account social</h2>
+        <h2 className="text-lg font-semibold">{t("settings.accountsTitle")}</h2>
         {platforms.map((p) => (
           <div key={p.platform} className="card flex flex-wrap items-center gap-3">
             <span className="h-3 w-3 rounded-full" style={{ backgroundColor: p.color }} />
@@ -70,58 +72,55 @@ function SettingsInner() {
               {p.connected ? (
                 <p className="truncate text-sm text-gray-500">
                   {p.accountName}
-                  {p.expiresAt && ` · token scade: ${fmtDate(p.expiresAt)}`}
+                  {p.expiresAt && t("settings.tokenExpires", { date: fmtDate(p.expiresAt) })}
                 </p>
               ) : (
-                <p className="text-sm text-gray-400">Non connesso</p>
+                <p className="text-sm text-gray-400">{t("settings.notConnected")}</p>
               )}
               {verify[p.platform] && <p className="text-xs">{verify[p.platform]}</p>}
             </div>
             {p.connected ? (
               <>
                 <button className="btn-secondary text-xs" onClick={() => doVerify(p.platform)}>
-                  Verifica token
+                  {t("settings.verifyToken")}
                 </button>
                 <button className="btn-danger text-xs" onClick={() => disconnect(p.platform)}>
-                  Disconnetti
+                  {t("settings.disconnect")}
                 </button>
               </>
             ) : (
               <a href={`/api/connect/${p.platform}`} className="btn-primary text-xs">
-                Connetti
+                {t("settings.connect")}
               </a>
             )}
           </div>
         ))}
-        <p className="text-xs text-gray-500">
-          Per connettere un account servono le credenziali OAuth nel file <code>.env</code> (vedi
-          README e <code>.env.example</code>).
-        </p>
+        <p className="text-xs text-gray-500">{t("settings.oauthHint")}</p>
       </section>
 
       <AiSettings />
 
       {/* Backup */}
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold">💾 Backup ed esportazione</h2>
+        <h2 className="text-lg font-semibold">{t("settings.backupTitle")}</h2>
         <div className="card flex flex-wrap items-center gap-3">
           <div className="flex-1">
-            <p className="font-medium">Esporta tutti i dati</p>
-            <p className="text-sm text-gray-500">
-              Post, media (metadati), impostazioni e log in un file JSON. I token degli account non
-              vengono mai esportati. I file media sono nella cartella <code>data/media</code>.
-            </p>
+            <p className="font-medium">{t("settings.exportAll")}</p>
+            <p className="text-sm text-gray-500">{t("settings.exportDesc")}</p>
           </div>
           <a href="/api/export" className="btn-secondary" download>
-            ⬇️ Scarica backup JSON
+            {t("settings.downloadBackup")}
           </a>
         </div>
       </section>
+
+      <DangerZone />
     </div>
   );
 }
 
 function AiSettings() {
+  const { t } = useI18n();
   const [provider, setProvider] = useState("mock");
   const [model, setModel] = useState("");
   const [apiKey, setApiKey] = useState("");
@@ -147,27 +146,27 @@ function AiSettings() {
     });
     setApiKey("");
     setHasKey(hasKey || !!apiKey);
-    setSaved("✅ Configurazione AI salvata.");
+    setSaved(t("settings.aiSaved"));
     setTimeout(() => setSaved(""), 3000);
   };
 
   return (
     <section className="space-y-3">
-      <h2 className="text-lg font-semibold">🤖 Configurazione AI</h2>
+      <h2 className="text-lg font-semibold">{t("settings.aiTitle")}</h2>
       <div className="card space-y-3">
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="block text-sm">
-            Provider
+            {t("settings.provider")}
             <select className="input mt-1" value={provider} onChange={(e) => setProvider(e.target.value)}>
-              <option value="mock">Mock (senza API, per prove)</option>
-              <option value="gemini">Google Gemini (2.5 Flash — gratuito)</option>
-              <option value="anthropic">Anthropic (Claude)</option>
-              <option value="openai">OpenAI</option>
-              <option value="ollama">Ollama (modelli locali)</option>
+              <option value="mock">{t("settings.providerMock")}</option>
+              <option value="gemini">{t("settings.providerGemini")}</option>
+              <option value="anthropic">{t("settings.providerAnthropic")}</option>
+              <option value="openai">{t("settings.providerOpenai")}</option>
+              <option value="ollama">{t("settings.providerOllama")}</option>
             </select>
           </label>
           <label className="block text-sm">
-            Modello
+            {t("settings.model")}
             <input
               className="input mt-1"
               placeholder={
@@ -186,17 +185,17 @@ function AiSettings() {
             />
           </label>
           <label className="block text-sm">
-            API key {hasKey && <span className="text-xs text-green-600">(già impostata)</span>}
+            {t("settings.apiKey")} {hasKey && <span className="text-xs text-green-600">{t("settings.apiKeySet")}</span>}
             <input
               className="input mt-1"
               type="password"
-              placeholder={hasKey ? "•••••••• (lascia vuoto per non cambiare)" : "sk-…"}
+              placeholder={hasKey ? t("settings.apiKeyPlaceholderSet") : "sk-…"}
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
             />
           </label>
           <label className="block text-sm">
-            Base URL (solo Ollama/proxy)
+            {t("settings.baseUrl")}
             <input
               className="input mt-1"
               placeholder="http://localhost:11434"
@@ -206,26 +205,53 @@ function AiSettings() {
           </label>
         </div>
         {provider === "gemini" && (
-          <p className="text-xs text-gray-500">
-            🎁 <strong>gemini-2.5-flash</strong> è gratuito col piano di Google AI Studio.
-            Ottieni la chiave su{" "}
-            <a
-              href="https://aistudio.google.com/apikey"
-              target="_blank"
-              rel="noreferrer"
-              className="text-brand-600 hover:underline"
-            >
-              aistudio.google.com/apikey
-            </a>{" "}
-            e incollala qui sopra.
-          </p>
+          <p className="text-xs text-gray-500">{t("settings.geminiHint")}</p>
         )}
         <div className="flex items-center gap-3">
           <button className="btn-primary" onClick={save}>
-            💾 Salva configurazione AI
+            {t("settings.saveAi")}
           </button>
           {saved && <span className="text-sm text-green-600">{saved}</span>}
         </div>
+      </div>
+    </section>
+  );
+}
+
+function DangerZone() {
+  const { t } = useI18n();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const deleteAccount = async () => {
+    if (!confirm(t("danger.confirm1"))) return;
+    if (!confirm(t("danger.confirm2"))) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api("/api/auth/account", { method: "DELETE" });
+      window.location.href = "/login";
+    } catch (err) {
+      setError(String(err instanceof Error ? err.message : err));
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="space-y-3">
+      <h2 className="text-lg font-semibold text-red-600">{t("danger.title")}</h2>
+      <div className="card border-red-300 dark:border-red-800">
+        <p className="font-medium">{t("danger.deleteAccount")}</p>
+        <p className="mt-1 text-sm text-gray-500">{t("danger.deleteDesc")}</p>
+        <p className="mt-1 text-xs text-gray-500">
+          <a href="/data-deletion" target="_blank" className="text-brand-600 hover:underline">
+            {t("danger.instructionsLink")}
+          </a>
+        </p>
+        <button className="btn-danger mt-3" onClick={deleteAccount} disabled={busy}>
+          {busy ? t("danger.deleting") : t("danger.deleteButton")}
+        </button>
+        {error && <p className="mt-2 text-sm text-red-500">{error}</p>}
       </div>
     </section>
   );

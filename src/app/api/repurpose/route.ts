@@ -13,6 +13,7 @@ import { z } from "zod";
 import { AppError, NotFoundError } from "@/lib/errors";
 import { withUser } from "@/lib/api";
 import { createMedia, createPost, getMedia } from "@/lib/repo";
+import { getQuota, formatBytes } from "@/lib/quota";
 import { ensureMediaDir, filePath, newFilePath } from "@/lib/storage";
 import { probeDuration, planClips, renderClip, extractCover, tmpWorkDir, type HookStyle } from "@/lib/repurpose";
 import { transcribe, sliceSrt, readSrtText } from "@/lib/whisper";
@@ -77,10 +78,32 @@ export const POST = withUser("repurpose", async (req, _ctx, user) => {
 
   await ensureMediaDir();
   const inPath = filePath(source.filename);
-  const duration = await probeDuration(inPath);
+  // probeDuration lancia già un errore descrittivo (ffmpeg mancante, file
+  // corrotto, ecc.): lo convertiamo in AppError per avere un 400 con messaggio
+  // leggibile invece di un 500 "Errore interno".
+  let duration: number;
+  try {
+    duration = await probeDuration(inPath);
+  } catch (e) {
+    throw new AppError(e instanceof Error ? e.message : "Impossibile leggere la durata del video");
+  }
   if (!duration) throw new AppError("Impossibile leggere la durata del video");
 
   const clips = planClips(duration, input.clipSeconds, input.maxClips);
+
+  // Stima prudenziale dello spazio richiesto: il repurpose è l'operazione che
+  // scrive di più (una clip + una copertina per finestra). Meglio fermarsi
+  // prima che a metà lavorazione con il disco pieno.
+  const estimated = clips.length * (input.clipSeconds * 400_000 + 200_000);
+  const quota = getQuota(user.id);
+  if (estimated > quota.free) {
+    throw new AppError(
+      `Spazio insufficiente per ${clips.length} clip (stimati ~${formatBytes(estimated)}, ` +
+        `liberi ${formatBytes(quota.free)}). Riduci il numero di clip o libera spazio nella Libreria.`,
+      413
+    );
+  }
+
   const work = tmpWorkDir();
 
   // Trascrizione globale (una volta) se servono sottotitoli o descrizioni.

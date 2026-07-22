@@ -2,6 +2,73 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ------------------------------------------------------------------
+ * Font incorporati per i caroselli.
+ * Self-hostati in /public/fonts (scaricabili con `npm run fonts`) così che le
+ * slide rese su <canvas> siano IDENTICHE su ogni dispositivo, senza dipendere
+ * dai font installati sul sistema dell'utente né da una CDN esterna.
+ * `font-display: block` evita che il canvas disegni con un fallback mentre il
+ * font sta ancora caricando.
+ * Se i file non sono presenti, il browser ignora la regola e si usa il
+ * fallback dichiarato nella famiglia CSS: nessun errore.
+ * ------------------------------------------------------------------ */
+@font-face {
+  font-family: "Montserrat";
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url("/fonts/montserrat-400.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Montserrat";
+  font-style: normal;
+  font-weight: 700;
+  font-display: block;
+  src: url("/fonts/montserrat-700.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Montserrat";
+  font-style: normal;
+  font-weight: 900;
+  font-display: block;
+  src: url("/fonts/montserrat-900.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url("/fonts/inter-400.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 700;
+  font-display: block;
+  src: url("/fonts/inter-700.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Bebas Neue";
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url("/fonts/bebasneue-400.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Playfair Display";
+  font-style: normal;
+  font-weight: 700;
+  font-display: block;
+  src: url("/fonts/playfair-700.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Roboto Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url("/fonts/robotomono-400.ttf") format("truetype");
+}
+
 /* Base: transizione morbida tra tema chiaro e scuro */
 html {
   @apply antialiased;

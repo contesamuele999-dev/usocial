@@ -21,6 +21,17 @@ export interface Transcript {
   text: string; // testo semplice (per la descrizione AI)
 }
 
+/**
+ * Verifica che la CLI di Whisper sia realmente invocabile.
+ * Serve per distinguere "Whisper non installato" da "trascrizione fallita" e
+ * dare all'utente un messaggio utile invece di sottotitoli assenti in silenzio.
+ */
+export async function whisperAvailable(): Promise<boolean> {
+  const whisperBin = process.env.WHISPER_PATH || "whisper";
+  const { code } = await run(whisperBin, ["--help"]);
+  return code === 0;
+}
+
 function run(bin: string, args: string[]): Promise<{ code: number; stderr: string }> {
   return new Promise((resolve) => {
     const p = spawn(bin, args);
@@ -79,9 +90,19 @@ export async function transcribe(inputPath: string): Promise<Transcript | null> 
   const res = await run(whisperBin, args);
   if (res.code !== 0) return null;
 
-  const srtPath = path.join(workDir, "audio.srt");
-  if (!fs.existsSync(srtPath)) return null;
+  // Whisper nomina l'output come il file di input, ma alcune versioni/fork
+  // cambiano il suffisso: cerchiamo il primo .srt prodotto nella cartella.
+  let srtPath = path.join(workDir, "audio.srt");
+  if (!fs.existsSync(srtPath)) {
+    const found = fs
+      .readdirSync(workDir)
+      .find((f) => f.toLowerCase().endsWith(".srt"));
+    if (!found) return null;
+    srtPath = path.join(workDir, found);
+  }
+
   const srt = fs.readFileSync(srtPath, "utf8");
+  if (!srt.trim()) return null;
   return { srtPath, text: srtToText(srt) };
 }
 

@@ -11,6 +11,7 @@ import Link from "next/link";
 import { api, type PlatformInfo } from "@/lib/client";
 import { useI18n } from "@/lib/i18n";
 import { downloadBlob, renderSlidesToBlobs, type Ratio } from "@/lib/carousel";
+import { CAROUSEL_FONTS, DEFAULT_FONT_CSS, preloadAllCarouselFonts } from "@/lib/fonts";
 import type {
   CarouselTemplateData,
   Platform,
@@ -19,14 +20,6 @@ import type {
   TemplateKind,
 } from "@/types";
 
-const FONTS = [
-  "Inter, system-ui, sans-serif",
-  "Georgia, serif",
-  "'Courier New', monospace",
-  "'Trebuchet MS', sans-serif",
-  "Impact, sans-serif",
-];
-
 const DEFAULT_POST: PostTemplateData = {
   body: "Hook: {hook}\n\n{corpo}\n\nCTA: {cta}",
   hashtags: "",
@@ -34,7 +27,7 @@ const DEFAULT_POST: PostTemplateData = {
 };
 
 const DEFAULT_CAROUSEL: CarouselTemplateData = {
-  brand: { bg: "#0f172a", text: "#ffffff", accent: "#6366f1", font: FONTS[0] },
+  brand: { bg: "#0f172a", text: "#ffffff", accent: "#6366f1", font: DEFAULT_FONT_CSS },
   slides: [
     { headline: "Titolo di apertura (hook)", body: "Una frase che ferma lo scroll." },
     { headline: "Punto 1", body: "Il valore che offri." },
@@ -313,6 +306,19 @@ function CarouselTemplateEditor({
   const [exporting, setExporting] = useState(false);
   const [creating, setCreating] = useState(false);
   const [exportMsg, setExportMsg] = useState("");
+  const [fontsReady, setFontsReady] = useState(false);
+
+  // Precarica i webfont così che l'anteprima HTML e i PNG esportati usino
+  // esattamente lo stesso font fin dal primo render.
+  useEffect(() => {
+    let alive = true;
+    preloadAllCarouselFonts().finally(() => {
+      if (alive) setFontsReady(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const slug = (name.trim() || "carosello").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
@@ -401,11 +407,18 @@ function CarouselTemplateEditor({
               value={data.brand.font}
               onChange={(e) => setBrand({ font: e.target.value })}
             >
-              {FONTS.map((f) => (
-                <option key={f} value={f}>
-                  {f.split(",")[0].replace(/'/g, "")}
+              {CAROUSEL_FONTS.map((f) => (
+                <option key={f.css} value={f.css} style={{ fontFamily: f.css }}>
+                  {f.label}
                 </option>
               ))}
+              {/* Template salvati con un font non più in elenco: manteniamo il
+                  valore corrente così non viene sovrascritto silenziosamente. */}
+              {!CAROUSEL_FONTS.some((f) => f.css === data.brand.font) && (
+                <option value={data.brand.font}>
+                  {data.brand.font.split(",")[0].replace(/'/g, "")}
+                </option>
+              )}
             </select>
           </label>
         </div>
@@ -466,16 +479,31 @@ function CarouselTemplateEditor({
               <option value="1:1">{t("templates.ratio11")}</option>
               <option value="9:16">{t("templates.ratio916")}</option>
             </select>
-            <button className="btn-secondary px-3 py-1.5 text-xs" onClick={download} disabled={exporting}>
+            {/* Export bloccati finché i webfont non sono pronti: evita PNG
+                disegnati col font di fallback. */}
+            <button
+              className="btn-secondary px-3 py-1.5 text-xs"
+              onClick={download}
+              disabled={exporting || !fontsReady}
+            >
               {exporting ? t("templates.exporting") : t("templates.exportDownload")}
             </button>
-            <button className="btn-primary px-3 py-1.5 text-xs" onClick={saveToLibrary} disabled={exporting}>
+            <button
+              className="btn-primary px-3 py-1.5 text-xs"
+              onClick={saveToLibrary}
+              disabled={exporting || !fontsReady}
+            >
               {t("templates.exportSave")}
             </button>
-            <button className="btn-primary px-3 py-1.5 text-xs" onClick={createPostWithImages} disabled={exporting || creating}>
+            <button
+              className="btn-primary px-3 py-1.5 text-xs"
+              onClick={createPostWithImages}
+              disabled={exporting || creating || !fontsReady}
+            >
               {creating ? t("templates.creating") : t("templates.createPost")}
             </button>
           </div>
+          {!fontsReady && <p className="mt-1 text-xs text-gray-500">{t("templates.fontsLoading")}</p>}
           {exportMsg && <p className="mt-1 text-xs text-green-600">{exportMsg}</p>}
           <div className="mt-2 flex gap-3 overflow-x-auto pb-2">
             {data.slides.map((s, i) => (

@@ -7,3 +7,7 @@ data/
 *.tsbuildinfo
 next-env.d.ts
 coverage/
+
+# Font scaricati con `npm run fonts` (non versionati per non appesantire il repo)
+public/fonts/*.ttf
+public/fonts/*.woff2

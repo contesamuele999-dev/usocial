@@ -5,6 +5,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { withUser } from "@/lib/api";
+import { AppError } from "@/lib/errors";
 import { runStudioAgent, STUDIO_AGENTS } from "@/ai/studio";
 import { PLATFORMS } from "@/types";
 
@@ -22,6 +23,14 @@ const schema = z.object({
 
 export const POST = withUser("studio", async (req, _ctx, user) => {
   const input = schema.parse(await req.json());
-  const result = await runStudioAgent(user.id, input);
-  return NextResponse.json({ result });
+  try {
+    const result = await runStudioAgent(user.id, input);
+    return NextResponse.json({ result });
+  } catch (e) {
+    // Gli errori del provider AI (chiave mancante, quota esaurita, rete, output
+    // troncato) sono problemi di configurazione, non bug del server: vanno
+    // mostrati all'utente invece di diventare un opaco 500 "Errore interno".
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new AppError(msg, 502);
+  }
 });

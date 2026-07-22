@@ -4,8 +4,10 @@
  * su Windows, macOS, Linux e Docker. Converte in MP4 pubblicabile (H.264 + AAC,
  * pixel yuv420p, +faststart), con trim e adattamento del formato opzionali.
  */
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createRequire } from "node:module";
+import fs from "node:fs";
+import path from "node:path";
 
 // Caricato con createRequire per evitare problemi di tipi/bundling: il pacchetto
 // esporta semplicemente il percorso del binario ffmpeg (stringa).
@@ -18,6 +20,10 @@ export interface ConvertOptions {
   end?: number; // secondi di fine (trim)
   ratio?: VideoRatio; // riquadratura di destinazione
   muted?: boolean; // rimuove l'audio
+  /** Percorso di un .srt da "bruciare" nel video (sottotitoli automatici). */
+  srtPath?: string;
+  /** Dimensione dei sottotitoli (px sul lato 1080). Default 44. */
+  subtitleSize?: number;
 }
 
 const DIMS: Record<Exclude<VideoRatio, "keep">, { w: number; h: number }> = {
@@ -28,18 +34,92 @@ const DIMS: Record<Exclude<VideoRatio, "keep">, { w: number; h: number }> = {
 };
 
 /**
- * Percorso del binario ffmpeg. Priorità:
- *  1) variabile d'ambiente FFMPEG_PATH (utile in Docker con ffmpeg di sistema);
- *  2) binario incluso da ffmpeg-static;
- *  3) null se nessuno dei due è disponibile.
+ * Verifica che un percorso sia un binario realmente presente su disco.
+ * NB: ritorna `boolean` (non un type predicate) di proposito, così TypeScript
+ * non restringe la variabile a `never` nel ramo negativo.
  */
-export function ffmpegPath(): string | null {
-  if (process.env.FFMPEG_PATH) return process.env.FFMPEG_PATH;
+function isRunnable(p: string | null | undefined): boolean {
+  if (!p) return false;
   try {
-    return (nodeRequire("ffmpeg-static") as string) || null;
+    return fs.statSync(p).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/** Cerca un binario nel PATH di sistema (Linux/macOS: which, Windows: where). */
+function fromSystemPath(name: string): string | null {
+  const finder = process.platform === "win32" ? "where" : "which";
+  try {
+    const r = spawnSync(finder, [name], { encoding: "utf8" });
+    if (r.status !== 0 || !r.stdout) return null;
+    const first = r.stdout.split(/\r?\n/).map((s) => s.trim()).find(Boolean) || "";
+    return isRunnable(first) ? first : null;
   } catch {
     return null;
   }
+}
+
+/**
+ * Risolve un binario ffmpeg/ffprobe con più fallback, in ordine:
+ *  1) variabile d'ambiente esplicita (FFMPEG_PATH / FFPROBE_PATH);
+ *  2) binario di ffmpeg-static, ma SOLO se esiste davvero su disco;
+ *  3) binario di sistema trovato nel PATH;
+ *  4) percorsi comuni su Linux (VM/Docker).
+ *
+ * Il passaggio 2 è fondamentale: `npm install` su Windows scarica `ffmpeg.exe`,
+ * che su una VM Linux non è eseguibile. Prima il percorso veniva restituito
+ * comunque e ogni spawn falliva con ENOENT, che l'app mostrava come generico
+ * "errore interno" / "impossibile leggere la durata del video".
+ */
+function resolveBinary(kind: "ffmpeg" | "ffprobe"): string | null {
+  const envVar = (kind === "ffmpeg" ? process.env.FFMPEG_PATH : process.env.FFPROBE_PATH) || "";
+  if (isRunnable(envVar)) return envVar;
+
+  if (kind === "ffmpeg") {
+    try {
+      const stat: string = (nodeRequire("ffmpeg-static") as string) || "";
+      if (isRunnable(stat)) return stat;
+      // il pacchetto punta a un binario di un'altra piattaforma: prova la
+      // variante senza/con .exe nella stessa cartella prima di rinunciare.
+      if (stat) {
+        const alt = stat.endsWith(".exe") ? stat.slice(0, -4) : `${stat}.exe`;
+        if (isRunnable(alt)) return alt;
+      }
+    } catch {
+      /* pacchetto assente: si prosegue coi fallback di sistema */
+    }
+  }
+
+  const sys = fromSystemPath(kind);
+  if (sys) return sys;
+
+  for (const p of [`/usr/bin/${kind}`, `/usr/local/bin/${kind}`, `/snap/bin/${kind}`]) {
+    if (isRunnable(p)) return p;
+  }
+  return null;
+}
+
+/** Percorso del binario ffmpeg (null se non disponibile). */
+export function ffmpegPath(): string | null {
+  return resolveBinary("ffmpeg");
+}
+
+/** Percorso di ffprobe, se disponibile (usato per leggere la durata in modo affidabile). */
+export function ffprobePath(): string | null {
+  return resolveBinary("ffprobe");
+}
+
+/**
+ * Messaggio d'errore uniforme quando manca ffmpeg: spiega all'utente cosa fare
+ * invece di lasciare un ENOENT criptico.
+ */
+export function ffmpegMissingMessage(): string {
+  return (
+    "ffmpeg non disponibile sul server. Sulla VM installalo con " +
+    "`sudo apt-get install -y ffmpeg`, oppure esegui `npm install` sulla stessa " +
+    "piattaforma del server, o imposta FFMPEG_PATH nel file .env."
+  );
 }
 
 function buildArgs(input: string, output: string, opts: ConvertOptions): string[] {
@@ -52,14 +132,41 @@ function buildArgs(input: string, output: string, opts: ConvertOptions): string[
     args.push("-t", String(dur));
   }
 
-  // riquadratura: scala per coprire, poi ritaglia al centro
+  // catena di filtri: prima la riquadratura, poi i sottotitoli (così il testo
+  // viene disegnato sulle dimensioni finali e non risulta stirato dal crop).
+  const filters: string[] = [];
+  const outW = opts.ratio && opts.ratio !== "keep" ? DIMS[opts.ratio].w : 1080;
+
   if (opts.ratio && opts.ratio !== "keep") {
     const { w, h } = DIMS[opts.ratio];
-    args.push(
-      "-vf",
-      `scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},setsar=1`
+    filters.push(
+      `scale=${w}:${h}:force_original_aspect_ratio=increase`,
+      `crop=${w}:${h}`,
+      "setsar=1"
     );
   }
+
+  if (opts.srtPath) {
+    // Stile "social": testo bianco grande, bordo nero marcato, in basso.
+    // Fontsize ASS è in punti su una base di 384px di altezza: riscaliamo.
+    const size = Math.round(((opts.subtitleSize ?? 44) / 1080) * outW * 0.36);
+    const style = [
+      `Fontsize=${size}`,
+      "Fontname=Arial",
+      "PrimaryColour=&H00FFFFFF",
+      "OutlineColour=&H00000000",
+      "BorderStyle=1",
+      "Outline=3",
+      "Shadow=0",
+      "Bold=1",
+      "Alignment=2", // in basso al centro
+      "MarginV=90",
+    ].join(",");
+    // il chiamante esegue ffmpeg nella cartella del .srt, quindi basta il nome
+    filters.push(`subtitles=${path.basename(opts.srtPath)}:force_style='${style}'`);
+  }
+
+  if (filters.length) args.push("-vf", filters.join(","));
 
   // codec pubblicabili sui social
   args.push(
@@ -90,7 +197,7 @@ function buildArgs(input: string, output: string, opts: ConvertOptions): string[
  */
 export function pushStreamToRtmp(target: string): ChildProcessWithoutNullStreams {
   const bin = ffmpegPath();
-  if (!bin) throw new Error("ffmpeg non disponibile: esegui `npm install` (ffmpeg-static).");
+  if (!bin) throw new Error(ffmpegMissingMessage());
   const args = [
     "-i", "pipe:0",
     "-c:v", "libx264",
@@ -113,14 +220,14 @@ export function pushStreamToRtmp(target: string): ChildProcessWithoutNullStreams
 /** Esegue la conversione. Rigetta con lo stderr di ffmpeg in caso di errore. */
 export function convertToMp4(input: string, output: string, opts: ConvertOptions = {}): Promise<void> {
   const bin = ffmpegPath();
-  if (!bin) {
-    return Promise.reject(
-      new Error("ffmpeg non disponibile: esegui `npm install` (pacchetto ffmpeg-static).")
-    );
-  }
+  if (!bin) return Promise.reject(new Error(ffmpegMissingMessage()));
   const args = buildArgs(input, output, opts);
+  // Con i sottotitoli eseguiamo ffmpeg nella cartella del .srt: il filtro
+  // `subtitles` ha un escaping dei percorsi fragile (spazi, ':' di Windows),
+  // quindi gli passiamo solo il nome del file.
+  const cwd = opts.srtPath ? path.dirname(opts.srtPath) : undefined;
   return new Promise((resolve, reject) => {
-    const proc = spawn(bin, args);
+    const proc = spawn(bin, args, cwd ? { cwd } : undefined);
     let err = "";
     proc.stderr.on("data", (d) => {
       err += d.toString();

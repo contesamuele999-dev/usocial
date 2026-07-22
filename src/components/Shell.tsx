@@ -21,7 +21,120 @@ const NAV = [
   { href: "/settings", key: "nav.settings", icon: "⚙️" },
 ];
 
+/** Link legali: raccolti in una sezione dedicata in fondo alla sidebar. */
+const LEGAL = [
+  { href: "/privacy", key: "nav.privacy", icon: "🔒" },
+  { href: "/terms", key: "nav.terms", icon: "📄" },
+  { href: "/data-deletion", key: "nav.dataDeletion", icon: "🗑️" },
+];
+
 const AUTH_PAGES = ["/login", "/register", "/privacy", "/terms", "/data-deletion"];
+
+/** Byte → stringa leggibile (es. "1.4 GB"). */
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let v = bytes / 1024;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  const dec = v >= 10 || i === 0 || Number.isInteger(v) ? 0 : 1;
+  return `${v.toFixed(dec)} ${units[i]}`;
+}
+
+interface Quota {
+  used: number;
+  limit: number;
+  percent: number;
+  files: number;
+  warning: boolean;
+  full: boolean;
+}
+
+/**
+ * Barra della memoria occupata.
+ * Su VM condivisa lo spazio è la risorsa più scarsa: mostrarlo sempre evita
+ * che l'utente scopra il problema solo quando un upload fallisce.
+ */
+function StorageBar() {
+  const { t } = useI18n();
+  const pathname = usePathname();
+  const [quota, setQuota] = useState<Quota | null>(null);
+
+  // Si aggiorna a ogni cambio pagina: dopo un upload o un'eliminazione il
+  // valore mostrato resta coerente senza bisogno di polling.
+  useEffect(() => {
+    let alive = true;
+    api<Quota>("/api/storage")
+      .then((q) => {
+        if (alive) setQuota(q);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [pathname]);
+
+  if (!quota) return null;
+
+  const pct = Math.min(100, quota.percent);
+  const color = quota.full ? "bg-red-500" : quota.warning ? "bg-amber-500" : "bg-brand-600";
+
+  return (
+    <Link
+      href="/media"
+      className="mt-2 block rounded-lg px-2 py-1.5 transition hover:bg-gray-100 dark:hover:bg-gray-800"
+      title={t("storage.tooltip", {
+        used: formatBytes(quota.used),
+        limit: formatBytes(quota.limit),
+        files: quota.files,
+      })}
+    >
+      <div className="flex items-center justify-between text-xs text-gray-500">
+        <span>💾 {t("storage.label")}</span>
+        <span className={quota.warning ? "font-semibold text-amber-600" : ""}>{pct}%</span>
+      </div>
+      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+        <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
+      </div>
+      <p className="mt-1 text-[11px] text-gray-400">
+        {formatBytes(quota.used)} / {formatBytes(quota.limit)}
+      </p>
+      {quota.full && <p className="mt-0.5 text-[11px] text-red-500">{t("storage.full")}</p>}
+    </Link>
+  );
+}
+
+/** Sezione con i link legali (privacy, termini, cancellazione dati). */
+function LegalLinks() {
+  const { t } = useI18n();
+  const pathname = usePathname();
+  return (
+    <div className="mt-2 border-t border-gray-200 pt-2 dark:border-gray-800">
+      <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+        {t("nav.legal")}
+      </p>
+      <div className="flex flex-col gap-0.5">
+        {LEGAL.map((item) => (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={`flex items-center gap-2 rounded-lg px-2 py-1 text-xs transition ${
+              pathname === item.href
+                ? "bg-brand-50 text-brand-700 dark:bg-brand-700/20 dark:text-brand-100"
+                : "text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+            }`}
+          >
+            <span>{item.icon}</span>
+            <span>{t(item.key)}</span>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function ThemeToggle() {
   const { t } = useI18n();
@@ -126,6 +239,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
           ))}
         </nav>
         <div className="hidden md:block">
+          <StorageBar />
+          <LegalLinks />
           <LanguageSelector />
           <ThemeToggle />
           <UserBox />

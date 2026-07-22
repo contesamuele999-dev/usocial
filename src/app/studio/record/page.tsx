@@ -38,6 +38,9 @@ export default function RecordPage() {
   const [converting, setConverting] = useState(false);
   const [saved, setSaved] = useState(false);
   const [outFormat, setOutFormat] = useState<"9:16" | "1:1" | "4:5" | "keep">("9:16");
+  // sottotitoli automatici (Whisper) bruciati nell'MP4
+  const [subtitles, setSubtitles] = useState(true);
+  const [notice, setNotice] = useState("");
 
   // teleprompter
   const [scrolling, setScrolling] = useState(false);
@@ -53,6 +56,10 @@ export default function RecordPage() {
   const promptRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number | null>(null);
   const lastTsRef = useRef<number>(0);
+  // Posizione di scorrimento in virgola mobile: `scrollTop` viene arrotondato
+  // dal browser, quindi a bassa velocità l'incremento per frame (<1px) veniva
+  // perso e il teleprompter restava fermo. Accumuliamo qui il valore esatto.
+  const scrollPosRef = useRef<number>(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const supported = typeof MediaRecorder !== "undefined";
@@ -107,13 +114,28 @@ export default function RecordPage() {
       return;
     }
     lastTsRef.current = performance.now();
+    // riparte dalla posizione reale (l'utente può aver scrollato a mano)
+    scrollPosRef.current = promptRef.current?.scrollTop ?? 0;
+
     const step = (ts: number) => {
-      const dt = (ts - lastTsRef.current) / 1000;
+      // clamp del delta: tornando su una scheda in background dt sarebbe enorme
+      // e il testo salterebbe di colpo alla fine.
+      const dt = Math.min((ts - lastTsRef.current) / 1000, 0.1);
       lastTsRef.current = ts;
       const el = promptRef.current;
       if (el) {
-        el.scrollTop += speed * dt;
-        if (el.scrollTop + el.clientHeight >= el.scrollHeight - 1) setScrolling(false);
+        const maxScroll = el.scrollHeight - el.clientHeight;
+        if (maxScroll <= 0) {
+          // testo troppo corto per scorrere: niente da fare
+          setScrolling(false);
+          return;
+        }
+        scrollPosRef.current = Math.min(scrollPosRef.current + speed * dt, maxScroll);
+        el.scrollTop = scrollPosRef.current;
+        if (scrollPosRef.current >= maxScroll - 0.5) {
+          setScrolling(false);
+          return;
+        }
       }
       rafRef.current = requestAnimationFrame(step);
     };
@@ -148,6 +170,7 @@ export default function RecordPage() {
     timerRef.current = setInterval(() => setElapsed((s) => s + 1), 1000);
     // avvia lo scorrimento del teleprompter dall'inizio
     if (promptRef.current) promptRef.current.scrollTop = 0;
+    scrollPosRef.current = 0;
     setScrolling(true);
   };
 
@@ -164,6 +187,7 @@ export default function RecordPage() {
     setSaved(false);
     blobRef.current = null;
     if (promptRef.current) promptRef.current.scrollTop = 0;
+    scrollPosRef.current = 0;
   };
 
   const uploadRecording = async (): Promise<MediaItem | null> => {
@@ -195,15 +219,22 @@ export default function RecordPage() {
   const saveAsMp4 = async () => {
     setSaving(true);
     setError("");
+    setNotice("");
     try {
       const created = await uploadRecording();
       if (!created) return;
       setSaving(false);
       setConverting(true);
-      await api(`/api/media/${created.id}/convert`, {
-        method: "POST",
-        body: JSON.stringify({ ratio: outFormat }),
-      });
+      const res = await api<{ subtitles?: boolean; subtitlesNote?: string | null }>(
+        `/api/media/${created.id}/convert`,
+        {
+          method: "POST",
+          body: JSON.stringify({ ratio: outFormat, subtitles }),
+        }
+      );
+      // La conversione può riuscire pur avendo saltato i sottotitoli: lo
+      // segnaliamo senza trattarlo come errore.
+      if (res?.subtitlesNote) setNotice(res.subtitlesNote);
       setSaved(true);
     } catch (err) {
       setError(String(err instanceof Error ? err.message : err));
@@ -262,7 +293,10 @@ export default function RecordPage() {
             {!recordedUrl && script.trim() && (
               <div
                 ref={promptRef}
-                className="absolute inset-x-0 bottom-0 max-h-[55%] overflow-y-auto scroll-smooth bg-black/55 px-5 py-4 text-center font-semibold leading-relaxed text-white"
+                /* NB: niente `scroll-smooth` — l'animazione CSS entrava in
+                   conflitto con gli aggiornamenti di scrollTop a ogni frame,
+                   bloccando di fatto il teleprompter. */
+                className="absolute inset-x-0 bottom-0 max-h-[55%] overflow-y-auto bg-black/55 px-5 py-4 text-center font-semibold leading-relaxed text-white"
                 style={{ fontSize }}
               >
                 <div className="whitespace-pre-wrap pb-[40%] pt-2">{script}</div>
@@ -314,8 +348,27 @@ export default function RecordPage() {
                   <option value="4:5">{t("video.r45")}</option>
                   <option value="keep">{t("video.keep")}</option>
                 </select>
+                <label
+                  className="flex items-center gap-1 text-xs text-gray-500"
+                  title={t("recorder.subtitlesHint")}
+                >
+                  <input
+                    type="checkbox"
+                    checked={subtitles}
+                    onChange={(e) => setSubtitles(e.target.checked)}
+                    className="accent-brand-600"
+                    disabled={saving || converting}
+                  />
+                  {t("recorder.subtitles")}
+                </label>
                 <button className="btn-primary" onClick={saveAsMp4} disabled={saving || converting}>
-                  {converting ? t("recorder.converting") : saving ? t("recorder.saving") : t("recorder.saveMp4")}
+                  {converting
+                    ? subtitles
+                      ? t("recorder.transcribing")
+                      : t("recorder.converting")
+                    : saving
+                      ? t("recorder.saving")
+                      : t("recorder.saveMp4")}
                 </button>
                 <button className="btn-secondary" onClick={save} disabled={saving || converting}>
                   {t("recorder.save")}
@@ -336,6 +389,7 @@ export default function RecordPage() {
             )}
           </div>
           {error && <p className="mt-2 text-sm text-red-500">{error}</p>}
+          {notice && <p className="mt-2 text-sm text-amber-600">{notice}</p>}
           {recordedUrl && <p className="mt-2 text-xs text-gray-500">{t("recorder.webmNote")}</p>}
         </div>
 
@@ -346,13 +400,18 @@ export default function RecordPage() {
               <span className="text-sm font-medium">{t("recorder.scriptTitle")}</span>
               {ready && !recordedUrl && (
                 <div className="flex gap-1">
-                  <button className="btn-secondary px-2 py-1 text-xs" onClick={() => setScrolling((s) => !s)}>
+                  <button
+                    className="btn-secondary px-2 py-1 text-xs"
+                    onClick={() => setScrolling((s) => !s)}
+                    disabled={!script.trim()}
+                  >
                     {scrolling ? t("recorder.pause") : t("recorder.play")}
                   </button>
                   <button
                     className="btn-secondary px-2 py-1 text-xs"
                     onClick={() => {
                       if (promptRef.current) promptRef.current.scrollTop = 0;
+                      scrollPosRef.current = 0;
                       setScrolling(false);
                     }}
                   >

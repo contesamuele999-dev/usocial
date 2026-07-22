@@ -361,6 +361,37 @@ export function listMedia(userId: number, filter?: { q?: string; folder?: string
   return (getDb().prepare(sql).all(...params) as Record<string, unknown>[]).map(rowToMedia);
 }
 
+/** Spazio totale occupato dai media di un utente, in byte. */
+export function mediaUsage(userId: number): number {
+  const row = getDb()
+    .prepare("SELECT COALESCE(SUM(size), 0) AS total FROM media WHERE user_id = ?")
+    .get(userId) as { total: number };
+  return Number(row.total) || 0;
+}
+
+/** Numero di file media di un utente. */
+export function mediaCount(userId: number): number {
+  const row = getDb()
+    .prepare("SELECT COUNT(*) AS n FROM media WHERE user_id = ?")
+    .get(userId) as { n: number };
+  return Number(row.n) || 0;
+}
+
+/** Spazio occupato per cartella (per capire cosa sta pesando di più). */
+export function mediaUsageByFolder(userId: number): { folder: string; bytes: number; files: number }[] {
+  return (
+    getDb()
+      .prepare(
+        `SELECT COALESCE(NULLIF(folder, ''), 'senza cartella') AS folder,
+                COALESCE(SUM(size), 0) AS bytes,
+                COUNT(*) AS files
+         FROM media WHERE user_id = ?
+         GROUP BY folder ORDER BY bytes DESC`
+      )
+      .all(userId) as { folder: string; bytes: number; files: number }[]
+  ).map((r) => ({ folder: r.folder, bytes: Number(r.bytes), files: Number(r.files) }));
+}
+
 export function getMedia(id: number, userId: number): MediaItem | null {
   const row = getDb()
     .prepare("SELECT * FROM media WHERE id = ? AND user_id = ?")

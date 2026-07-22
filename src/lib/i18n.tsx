@@ -94,6 +94,19 @@ const it = {
     media: "Media",
     history: "Cronologia",
     settings: "Impostazioni",
+    legal: "Informazioni legali",
+    privacy: "Privacy",
+    terms: "Termini",
+    dataDeletion: "Cancellazione dati",
+  },
+  storage: {
+    label: "Memoria",
+    tooltip: "{used} di {limit} usati · {files} file. Clicca per gestire la libreria.",
+    full: "Spazio esaurito: elimina dei file",
+    title: "Spazio utilizzato",
+    ofLimit: "{used} di {limit}",
+    byFolder: "Per cartella",
+    files: "{n} file",
   },
   studio: {
     title: "Studio Contenuti AI",
@@ -243,6 +256,7 @@ const it = {
     ratio11: "1:1 (quadrato)",
     ratio916: "9:16 (storia/reel)",
     exportDownload: "⬇️ Scarica PNG",
+    fontsLoading: "Caricamento font in corso… l'export sarà disponibile tra un istante.",
     exportSave: "💾 Salva in libreria",
     exporting: "Esportazione…",
     exportedSaved: "✅ {n} immagini salvate in libreria",
@@ -273,8 +287,12 @@ const it = {
     pause: "⏸ Pausa",
     restart: "⟲ Inizio",
     mirror: "Specchia",
+    subtitles: "Sottotitoli auto",
+    subtitlesHint:
+      "Trascrive l'audio con Whisper e stampa i sottotitoli nel video. Aggiunge qualche minuto alla conversione.",
+    transcribing: "Trascrizione e conversione…",
     webmNote:
-      "La registrazione è in formato WebM. La conversione automatica in MP4 (per pubblicare su TikTok/Instagram) arriverà col modulo di montaggio.",
+      "La registrazione originale è in WebM. Usa “Salva in MP4” per ottenere il file pubblicabile su TikTok/Instagram, con sottotitoli automatici opzionali.",
   },
   shell: {
     newPost: "Nuovo Post",
@@ -534,6 +552,19 @@ const en: typeof it = {
     media: "Media",
     history: "History",
     settings: "Settings",
+    legal: "Legal",
+    privacy: "Privacy",
+    terms: "Terms",
+    dataDeletion: "Data deletion",
+  },
+  storage: {
+    label: "Storage",
+    tooltip: "{used} of {limit} used · {files} files. Click to manage your library.",
+    full: "Storage full: delete some files",
+    title: "Storage used",
+    ofLimit: "{used} of {limit}",
+    byFolder: "By folder",
+    files: "{n} files",
   },
   studio: {
     title: "AI Content Studio",
@@ -683,6 +714,7 @@ const en: typeof it = {
     ratio11: "1:1 (square)",
     ratio916: "9:16 (story/reel)",
     exportDownload: "⬇️ Download PNG",
+    fontsLoading: "Loading fonts… export will be available in a moment.",
     exportSave: "💾 Save to library",
     exporting: "Exporting…",
     exportedSaved: "✅ {n} images saved to the library",
@@ -713,8 +745,12 @@ const en: typeof it = {
     pause: "⏸ Pause",
     restart: "⟲ Start",
     mirror: "Mirror",
+    subtitles: "Auto subtitles",
+    subtitlesHint:
+      "Transcribes the audio with Whisper and burns the subtitles into the video. Adds a few minutes to the conversion.",
+    transcribing: "Transcribing and converting…",
     webmNote:
-      "The recording is in WebM format. Automatic conversion to MP4 (to publish on TikTok/Instagram) will come with the editing module.",
+      "The original recording is in WebM. Use “Save as MP4” to get a file you can publish on TikTok/Instagram, with optional automatic subtitles.",
   },
   shell: {
     newPost: "New Post",

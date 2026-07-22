@@ -5,6 +5,7 @@
  * per le immagini).
  */
 import type { BrandKit, CarouselSlide } from "@/types";
+import { ensureFontsReady } from "./fonts";
 
 export type Ratio = "4:5" | "1:1" | "9:16";
 
@@ -42,6 +43,22 @@ function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxWidth: number
     if (line) out.push(line);
   }
   return out;
+}
+
+/**
+ * Versione asincrona: garantisce che il webfont sia caricato PRIMA di
+ * disegnare. Da preferire sempre lato UI — è ciò che rende il carosello
+ * identico su ogni dispositivo.
+ */
+export async function renderSlideAsync(
+  slide: CarouselSlide,
+  brand: BrandKit,
+  index: number,
+  total: number,
+  ratio: Ratio = "4:5"
+): Promise<HTMLCanvasElement> {
+  await ensureFontsReady(brand.font);
+  return renderSlide(slide, brand, index, total, ratio);
 }
 
 /** Disegna una singola slide su un canvas e lo ritorna. */
@@ -124,6 +141,10 @@ export async function renderSlidesToBlobs(
   brand: BrandKit,
   ratio: Ratio
 ): Promise<Blob[]> {
+  // Un solo caricamento font per l'intero export: senza questa attesa le prime
+  // slide venivano disegnate col font di fallback e le successive col font
+  // giusto, producendo caroselli incoerenti.
+  await ensureFontsReady(brand.font);
   const blobs: Blob[] = [];
   for (let i = 0; i < slides.length; i++) {
     blobs.push(await toBlob(renderSlide(slides[i], brand, i, slides.length, ratio)));

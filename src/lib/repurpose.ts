@@ -7,7 +7,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { ffmpegPath } from "./video";
+import { ffmpegPath, ffprobePath, ffmpegMissingMessage } from "./video";
 
 export type ClipRatio = "9:16" | "1:1" | "4:5" | "keep";
 
@@ -26,28 +26,61 @@ const DIMS: Record<Exclude<ClipRatio, "keep">, { w: number; h: number }> = {
   "4:5": { w: 1080, h: 1350 },
 };
 
-function run(bin: string, args: string[], cwd?: string): Promise<{ code: number; stderr: string }> {
+function run(
+  bin: string,
+  args: string[],
+  cwd?: string
+): Promise<{ code: number; stderr: string; stdout: string }> {
   return new Promise((resolve) => {
     const p = spawn(bin, args, cwd ? { cwd } : undefined);
     let stderr = "";
+    let stdout = "";
+    p.stdout.on("data", (d) => (stdout = (stdout + d).slice(-6000)));
     p.stderr.on("data", (d) => (stderr = (stderr + d).slice(-6000)));
-    p.on("error", () => resolve({ code: -1, stderr: "spawn error" }));
-    p.on("close", (code) => resolve({ code: code ?? -1, stderr }));
+    // ENOENT o binario della piattaforma sbagliata: riportiamo il messaggio vero.
+    p.on("error", (e) => resolve({ code: -1, stderr: `spawn error: ${e.message}`, stdout: "" }));
+    p.on("close", (code) => resolve({ code: code ?? -1, stderr, stdout }));
   });
 }
 
 function bin(): string {
   const b = ffmpegPath();
-  if (!b) throw new Error("ffmpeg non disponibile: esegui `npm install` (ffmpeg-static).");
+  if (!b) throw new Error(ffmpegMissingMessage());
   return b;
 }
 
-/** Durata del video in secondi (parsing dallo stderr di ffmpeg). */
+/**
+ * Durata del video in secondi.
+ * Prima prova ffprobe (preciso e machine-readable), poi ricade sul parsing
+ * dello stderr di ffmpeg. Lancia un errore parlante se il video non è
+ * leggibile, invece di restituire 0 e far comparire un messaggio generico.
+ */
 export async function probeDuration(input: string): Promise<number> {
+  if (!fs.existsSync(input)) {
+    throw new Error("File video non trovato sul server (potrebbe essere stato rimosso).");
+  }
+
+  const probe = ffprobePath();
+  if (probe) {
+    const { code, stdout } = await run(probe, [
+      "-v", "error",
+      "-show_entries", "format=duration",
+      "-of", "default=noprint_wrappers=1:nokey=1",
+      input,
+    ]);
+    const val = parseFloat(stdout.trim());
+    if (code === 0 && Number.isFinite(val) && val > 0) return val;
+  }
+
   const { stderr } = await run(bin(), ["-i", input, "-f", "null", "-"]);
   const m = stderr.match(/Duration:\s*(\d+):(\d+):(\d+)\.(\d+)/);
-  if (!m) return 0;
-  return +m[1] * 3600 + +m[2] * 60 + +m[3] + +m[4] / 100;
+  if (m) return +m[1] * 3600 + +m[2] * 60 + +m[3] + +m[4] / 100;
+
+  if (/spawn error/.test(stderr)) throw new Error(ffmpegMissingMessage());
+  throw new Error(
+    "Impossibile leggere la durata del video: formato non riconosciuto o file danneggiato. " +
+      "Prova a convertirlo in MP4 prima del repurpose."
+  );
 }
 
 /** Suddivide la durata in finestre [start,end] di `clipSeconds` (max `maxClips`). */

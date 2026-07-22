@@ -21,6 +21,16 @@ export const env = {
   get dbPath(): string {
     return path.join(this.dataDir, "usocial.db");
   },
+  /**
+   * Quota di spazio per utente, in byte (default 2 GB).
+   * La VM ha un disco da ~30 GB condiviso: 2 GB a utente permette una quindicina
+   * di account lasciando margine a sistema, database e file temporanei di ffmpeg.
+   * Configurabile con USER_QUOTA_MB nel file .env.
+   */
+  get userQuotaBytes(): number {
+    const mb = Number(process.env.USER_QUOTA_MB);
+    return (Number.isFinite(mb) && mb > 0 ? mb : 2048) * 1024 * 1024;
+  },
   /** Credenziali OAuth per piattaforma (vuote = piattaforma non configurata). */
   oauth(platform: string): { clientId: string; clientSecret: string } {
     const map: Record<string, [string, string]> = {

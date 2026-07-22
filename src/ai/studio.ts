@@ -84,9 +84,43 @@ function promptFor(req: StudioRequest): string {
   }
 }
 
+/**
+ * Tetto di token per agente. Gli agenti che producono elenchi lunghi
+ * (carosello, piano editoriale, idee) hanno bisogno di molto più spazio: con il
+ * vecchio limite fisso di 2048 un carosello da 10+ slide veniva troncato e
+ * l'errore arrivava all'utente come generico "Errore interno".
+ */
+function maxTokensFor(req: StudioRequest): number {
+  const n = req.count && req.count > 0 ? req.count : 8;
+  switch (req.agent) {
+    case "carousel":
+      // ~220 token per slide, con margine
+      return Math.min(8000, Math.max(2048, n * 220 + 800));
+    case "plan":
+      return Math.min(8000, Math.max(2048, n * 160 + 600));
+    case "ideas":
+      return Math.min(8000, Math.max(2048, n * 120 + 600));
+    case "reel_script":
+      return 3000;
+    case "description":
+    default:
+      return 1500;
+  }
+}
+
 /** Esegue un agente dello Studio e ritorna il testo generato. */
 export async function runStudioAgent(userId: number, req: StudioRequest): Promise<string> {
-  const provider = getAiProvider(getAiConfig(userId));
-  const out = await provider.complete(system(req.lang ?? "it"), promptFor(req));
-  return out.trim();
+  const config = getAiConfig(userId);
+  const provider = getAiProvider(config);
+  const out = await provider.complete(system(req.lang ?? "it"), promptFor(req), {
+    maxTokens: maxTokensFor(req),
+  });
+  const text = out.trim();
+  if (!text) {
+    throw new Error(
+      `Il provider AI "${config.provider}" ha restituito una risposta vuota. ` +
+        `Controlla modello e chiave in Impostazioni → Configurazione AI.`
+    );
+  }
+  return text;
 }

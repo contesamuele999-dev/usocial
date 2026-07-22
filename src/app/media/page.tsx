@@ -8,10 +8,67 @@ import { useI18n, type TFunc } from "@/lib/i18n";
 import type { MediaItem } from "@/types";
 import { MediaThumb, mediaUrl } from "@/components/MediaPicker";
 
+interface Quota {
+  used: number;
+  limit: number;
+  percent: number;
+  files: number;
+  warning: boolean;
+  full: boolean;
+  byFolder: { folder: string; bytes: number; files: number }[];
+}
+
+/** Byte → stringa leggibile (es. "1.4 GB"). */
+function fmtBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let v = bytes / 1024;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  const dec = v >= 10 || i === 0 || Number.isInteger(v) ? 0 : 1;
+  return `${v.toFixed(dec)} ${units[i]}`;
+}
+
+/** Dettaglio dello spazio occupato, con ripartizione per cartella. */
+function StoragePanel({ quota }: { quota: Quota | null }) {
+  const { t } = useI18n();
+  if (!quota) return null;
+  const pct = Math.min(100, quota.percent);
+  const color = quota.full ? "bg-red-500" : quota.warning ? "bg-amber-500" : "bg-brand-600";
+  return (
+    <div className="card">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <span className="text-sm font-medium">💾 {t("storage.title")}</span>
+        <span className={`text-sm ${quota.warning ? "font-semibold text-amber-600" : "text-gray-500"}`}>
+          {t("storage.ofLimit", { used: fmtBytes(quota.used), limit: fmtBytes(quota.limit) })} · {pct}%
+        </span>
+      </div>
+      <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+        <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
+      </div>
+      {quota.full && <p className="mt-1 text-xs text-red-500">{t("storage.full")}</p>}
+      {quota.byFolder.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
+          <span className="font-medium">{t("storage.byFolder")}:</span>
+          {quota.byFolder.slice(0, 6).map((f) => (
+            <span key={f.folder}>
+              {f.folder} — {fmtBytes(f.bytes)} ({t("storage.files", { n: f.files })})
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function MediaPage() {
   const { t } = useI18n();
   const [items, setItems] = useState<MediaItem[]>([]);
   const [folders, setFolders] = useState<string[]>([]);
+  const [quota, setQuota] = useState<Quota | null>(null);
   const [q, setQ] = useState("");
   const [folder, setFolder] = useState("");
   const [preview, setPreview] = useState<MediaItem | null>(null);
@@ -26,6 +83,12 @@ export default function MediaPage() {
     const r = await api<{ items: MediaItem[]; folders: string[] }>(`/api/media?${params}`);
     setItems(r.items);
     setFolders(r.folders);
+    // la quota si aggiorna insieme alla lista (dopo upload/eliminazioni)
+    try {
+      setQuota(await api<Quota>("/api/storage"));
+    } catch {
+      /* la barra è informativa: un errore qui non deve bloccare la libreria */
+    }
   }, [q, folder]);
 
   useEffect(() => {
@@ -90,6 +153,8 @@ export default function MediaPage() {
           onChange={(e) => upload(e.target.files)}
         />
       </div>
+
+      <StoragePanel quota={quota} />
 
       <div className="flex flex-wrap gap-2">
         <input

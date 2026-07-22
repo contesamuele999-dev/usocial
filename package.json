@@ -5,6 +5,8 @@
   "description": "Social Publisher AI — scrivi una volta, pubblica ovunque (strumento personale, single-user)",
   "scripts": {
     "dev": "next dev -p 3000",
+    "fonts": "node scripts/fetch-fonts.mjs",
+    "postinstall": "node scripts/fetch-fonts.mjs || true",
     "build": "next build",
     "start": "next start -p 3000",
     "test": "vitest run",

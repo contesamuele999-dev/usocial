@@ -2,9 +2,9 @@
 /**
  * Termini di Servizio, bilingue (it/en) in base alla lingua scelta nell'app.
  */
-import Image from "next/image";
 import Link from "next/link";
 import { useI18n } from "@/lib/i18n";
+import { LegalHeader } from "@/components/LegalHeader";
 
 const UPDATED_IT = "18 luglio 2026";
 const UPDATED_EN = "July 18, 2026";
@@ -21,10 +21,7 @@ export function TermsContent() {
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-12 text-gray-800 dark:text-gray-200">
-      <Link href="/" className="flex items-center gap-3">
-        <Image src="/icon.png" alt="uSocial" width={40} height={40} className="rounded-lg" priority />
-        <span className="text-xl font-bold text-gray-900 dark:text-gray-100">uSocial</span>
-      </Link>
+      <LegalHeader />
 
       <Link href="/" className="mt-6 inline-block text-sm text-brand-600 hover:underline">
         {en ? "← Back to uSocial" : "← Torna a uSocial"}

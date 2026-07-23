@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import "./globals.css";
 import { Shell } from "@/components/Shell";
 import { LanguageProvider } from "@/lib/i18n";
+import { SESSION_COOKIE } from "@/lib/constants";
 
 export const metadata: Metadata = {
   title: "uSocial — Social Publisher AI",
@@ -25,7 +27,9 @@ try {
 } catch {}
 `;
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const store = await cookies();
+  const hasSession = store.has(SESSION_COOKIE);
   return (
     <html lang="it" suppressHydrationWarning>
       <head>
@@ -33,7 +37,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <LanguageProvider>
-          <Shell>{children}</Shell>
+          <Shell hasSession={hasSession}>{children}</Shell>
         </LanguageProvider>
       </body>
     </html>

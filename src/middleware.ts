@@ -14,7 +14,10 @@ import { SESSION_COOKIE } from "@/lib/constants";
 const PUBLIC_PAGES = ["/login", "/register"];
 // Pagine sempre accessibili, con o senza login (richieste anche dai revisori
 // delle piattaforme social, es. TikTok, che le visitano senza autenticarsi).
-const ALWAYS_PUBLIC = ["/privacy", "/terms", "/data-deletion"];
+// La home "/" mostra una landing pubblica agli utenti non autenticati e la
+// dashboard a quelli loggati (la pagina stessa decide in base alla sessione),
+// quindi NON deve essere redirezionata al login.
+const ALWAYS_PUBLIC = ["/", "/privacy", "/terms", "/data-deletion"];
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -39,6 +42,9 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  // esclude asset statici; include pagine e (per semplicità) le api, gestite sopra
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|robots.txt).*)"],
+  // Esclude gli asset di Next e QUALSIASI file statico con estensione
+  // (es. /icon.png, /apple-icon.png in public/): senza questa esclusione il
+  // middleware li redirigerebbe a /login per gli utenti non autenticati,
+  // impedendo a next/image di caricare l'icona nelle pagine pubbliche.
+  matcher: ["/((?!_next/static|_next/image|.*\\.[\\w]+$).*)"],
 };

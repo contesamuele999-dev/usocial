@@ -201,12 +201,19 @@ function UserBox() {
   );
 }
 
-export function Shell({ children }: { children: React.ReactNode }) {
+export function Shell({
+  children,
+  hasSession = false,
+}: {
+  children: React.ReactNode;
+  hasSession?: boolean;
+}) {
   const pathname = usePathname();
   const { t } = useI18n();
 
   // Pagine di autenticazione: nessuna sidebar, solo il contenuto centrato.
-  if (AUTH_PAGES.includes(pathname)) {
+  // La home "/" senza sessione mostra la landing pubblica, anch'essa senza sidebar.
+  if (AUTH_PAGES.includes(pathname) || (pathname === "/" && !hasSession)) {
     return <>{children}</>;
   }
 

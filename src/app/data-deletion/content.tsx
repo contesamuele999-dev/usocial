@@ -5,6 +5,7 @@
  */
 import Link from "next/link";
 import { useI18n } from "@/lib/i18n";
+import { LegalHeader } from "@/components/LegalHeader";
 
 const UPDATED = "21 luglio 2026";
 const CONTACT = "umasterinfo@gmail.com";
@@ -13,7 +14,9 @@ export function DataDeletionContent() {
   const { t } = useI18n();
   return (
     <div className="mx-auto max-w-3xl px-6 py-12 text-gray-800 dark:text-gray-200">
-      <Link href="/" className="text-sm text-brand-600 hover:underline">
+      <LegalHeader />
+
+      <Link href="/" className="mt-6 inline-block text-sm text-brand-600 hover:underline">
         {t("dataDeletion.back")}
       </Link>
 

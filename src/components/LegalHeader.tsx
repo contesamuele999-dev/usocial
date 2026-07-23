@@ -8,7 +8,6 @@
  * - Default INGLESE su queste pagine: se l'utente non ha ancora scelto
  *   esplicitamente una lingua in questa sessione, forza "en".
  */
-import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef } from "react";
 import { useI18n, LANGS, type Lang } from "@/lib/i18n";
@@ -34,7 +33,11 @@ export function LegalHeader() {
   return (
     <div className="flex items-center justify-between gap-4">
       <Link href="/" className="flex items-center gap-3">
-        <Image src="/icon.png" alt="uSocial" width={40} height={40} className="rounded-lg" priority />
+        {/* <img> nativo su /logo.png (in public/). NON usare /icon.png: quel
+            percorso è già servito dalla convenzione favicon src/app/icon.png e
+            un file public/icon.png andrebbe in conflitto (errore 500). */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/logo.png" alt="uSocial" width={40} height={40} className="h-10 w-10 rounded-lg" />
         <span className="text-xl font-bold text-gray-900 dark:text-gray-100">uSocial</span>
       </Link>
 

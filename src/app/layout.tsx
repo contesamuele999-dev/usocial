@@ -8,11 +8,9 @@ import { SESSION_COOKIE } from "@/lib/constants";
 export const metadata: Metadata = {
   title: "uSocial — Social Publisher AI",
   description: "Scrivi una volta, pubblica ovunque.",
-  icons: {
-    icon: "/icon.png",
-    apple: "/apple-icon.png",
-    shortcut: "/icon.png",
-  },
+  // Favicon e apple-icon sono generati automaticamente dalla convenzione Next
+  // (src/app/icon.png e src/app/apple-icon.png): non dichiararli qui per
+  // evitare conflitti sul percorso /icon.png.
 };
 
 /** Script inline: applica tema e lingua salvati prima del paint (niente flash). */

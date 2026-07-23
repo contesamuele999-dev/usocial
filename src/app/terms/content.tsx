@@ -2,6 +2,7 @@
 /**
  * Termini di Servizio, bilingue (it/en) in base alla lingua scelta nell'app.
  */
+import Image from "next/image";
 import Link from "next/link";
 import { useI18n } from "@/lib/i18n";
 
@@ -20,11 +21,16 @@ export function TermsContent() {
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-12 text-gray-800 dark:text-gray-200">
-      <Link href="/" className="text-sm text-brand-600 hover:underline">
+      <Link href="/" className="flex items-center gap-3">
+        <Image src="/icon.png" alt="uSocial" width={40} height={40} className="rounded-lg" priority />
+        <span className="text-xl font-bold text-gray-900 dark:text-gray-100">uSocial</span>
+      </Link>
+
+      <Link href="/" className="mt-6 inline-block text-sm text-brand-600 hover:underline">
         {en ? "← Back to uSocial" : "← Torna a uSocial"}
       </Link>
 
-      <h1 className="mt-4 text-3xl font-bold">{en ? "Terms of Service" : "Termini di Servizio"}</h1>
+      <h1 className="mt-4 text-3xl font-bold">uSocial Terms of Service</h1>
       <p className="mt-1 text-sm text-gray-500">
         {en ? `Last updated: ${UPDATED_EN}` : `Ultimo aggiornamento: ${UPDATED_IT}`}
       </p>

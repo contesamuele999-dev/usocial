@@ -6,6 +6,11 @@ import { LanguageProvider } from "@/lib/i18n";
 export const metadata: Metadata = {
   title: "uSocial — Social Publisher AI",
   description: "Scrivi una volta, pubblica ovunque.",
+  icons: {
+    icon: "/icon.png",
+    apple: "/apple-icon.png",
+    shortcut: "/icon.png",
+  },
 };
 
 /** Script inline: applica tema e lingua salvati prima del paint (niente flash). */

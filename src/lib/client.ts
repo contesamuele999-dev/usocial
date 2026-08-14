@@ -2,7 +2,7 @@
  * Helper per il frontend: chiamate API tipizzate + tipi condivisi con il backend.
  */
 import type { PlatformLimits } from "@/social/types";
-import type { Platform } from "@/types";
+import type { MediaItem, Platform } from "@/types";
 
 /** Info piattaforma restituita da GET /api/platforms. */
 export interface PlatformInfo {
@@ -13,6 +13,8 @@ export interface PlatformInfo {
   connected: boolean;
   accountName: string | null;
   expiresAt: string | null;
+  /** true = il token viene rinnovato automaticamente prima della scadenza. */
+  autoRenew?: boolean;
 }
 
 /** fetch con gestione errori uniforme: lancia Error con il messaggio del server. */
@@ -36,6 +38,98 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error((json as { error?: string }).error || `Errore ${res.status}`);
   }
   return json as T;
+}
+
+/**
+ * Elenco piattaforme, memorizzato per la durata della sessione di navigazione.
+ * Quasi ogni pagina lo richiede: senza cache ogni cambio pagina aggiungeva una
+ * chiamata HTTP (e una query per piattaforma) prima di poter disegnare la UI.
+ * `getPlatforms(true)` forza il ricaricamento (dopo connessione/disconnessione).
+ */
+let platformsCache: Promise<PlatformInfo[]> | null = null;
+export function getPlatforms(force = false): Promise<PlatformInfo[]> {
+  if (force || !platformsCache) {
+    platformsCache = api<PlatformInfo[]>("/api/platforms").catch((err) => {
+      platformsCache = null; // un errore non deve restare in cache
+      throw err;
+    });
+  }
+  return platformsCache;
+}
+
+/**
+ * Upload di un media con avanzamento reale.
+ * Usa XMLHttpRequest perché `fetch` non espone il progresso dell'invio, e manda
+ * il file come body raw (il server lo scrive in streaming: niente limiti di RAM).
+ */
+export function uploadMedia(
+  file: File,
+  opts?: { folder?: string; onProgress?: (percent: number) => void }
+): Promise<MediaItem & { quota?: unknown }> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/media");
+    xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+    xhr.setRequestHeader("x-filename", encodeURIComponent(file.name));
+    if (opts?.folder) xhr.setRequestHeader("x-folder", opts.folder);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) opts?.onProgress?.(Math.round((e.loaded / e.total) * 100));
+    };
+    xhr.onload = () => {
+      let json: { error?: string } = {};
+      try {
+        json = JSON.parse(xhr.responseText);
+      } catch {
+        /* risposta non JSON: sotto usiamo il codice HTTP */
+      }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(json as MediaItem);
+      else reject(new Error(json.error || `Errore ${xhr.status}`));
+    };
+    xhr.onerror = () => reject(new Error("Connessione interrotta durante l'upload"));
+    xhr.send(file);
+  });
+}
+
+/**
+ * Piattaforme su cui il media non è pubblicabile (tipo di file non accettato,
+ * o piattaforma che vuole un video e riceve un'immagine).
+ * Ritorna una riga per problema, già pronta da mostrare.
+ */
+export function mediaWarnings(
+  items: { originalName: string; mime: string }[],
+  platforms: PlatformInfo[],
+  t: (key: string, vars?: Record<string, string | number>) => string
+): string[] {
+  const out: string[] = [];
+  for (const p of platforms) {
+    const kind = (m: string) => (m.startsWith("video/") ? "video" : "image");
+    for (const it of items) {
+      const okType = p.limits.mediaTypes.includes(kind(it.mime) as "image" | "video");
+      const okMime = !p.limits.mimeTypes || p.limits.mimeTypes.includes(it.mime);
+      if (!okType || !okMime) {
+        out.push(
+          t("mediaPicker.warnFormat", {
+            file: it.originalName,
+            mime: it.mime,
+            platform: p.displayName,
+          })
+        );
+      }
+    }
+    if (items.length > p.limits.maxMedia) {
+      out.push(
+        t("mediaPicker.warnTooMany", {
+          platform: p.displayName,
+          max: p.limits.maxMedia,
+          n: items.length,
+        })
+      );
+    }
+    if (p.limits.requiresMedia && items.length === 0) {
+      out.push(t("mediaPicker.warnRequired", { platform: p.displayName }));
+    }
+  }
+  return out;
 }
 
 /** Classi CSS del badge per ogni stato. L'etichetta testuale è tradotta via i18n (`status.<stato>`). */

@@ -8,17 +8,19 @@ import path from "node:path";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import {
+  deleteMediaSystem,
   getAccount,
   getPostSystem,
-  saveAccount,
+  reclaimablePostMedia,
   setPostStatus,
   updateTarget,
 } from "@/lib/repo";
+import { getSetting } from "@/lib/db";
 import type { Post, PostStatus, PostTarget, TargetStatus } from "@/types";
 import { getModule } from "./registry";
-import { expiryIso } from "./oauth";
+import { needsRefresh, refreshAccount } from "./tokens";
 import type { PublishInput, PublishMedia } from "./types";
-import { filePath } from "@/lib/storage";
+import { deleteFile, filePath } from "@/lib/storage";
 
 /** Numero massimo di tentativi per target (1 iniziale + retry). */
 export const MAX_ATTEMPTS = 5;
@@ -62,26 +64,15 @@ function toPublishMedia(post: Post): PublishMedia[] {
   }));
 }
 
-/** Rinnova il token se scaduto (per le piattaforme che lo supportano). */
+/**
+ * Garantisce un access token valido al momento della pubblicazione.
+ * Il rinnovo periodico lo fa già lo scheduler (src/social/tokens.ts): qui è
+ * l'ultima rete di sicurezza per i post pubblicati a mano dopo mesi.
+ */
 async function ensureFreshToken(userId: number, platform: PostTarget["platform"]) {
   const account = getAccount(userId, platform);
   if (!account) return null;
-  const mod = getModule(platform);
-  const expired = account.expiresAt && new Date(account.expiresAt).getTime() < Date.now() + 60_000;
-  if (expired && mod.refresh) {
-    try {
-      const tokens = await mod.refresh(account);
-      if (tokens) {
-        account.accessToken = tokens.accessToken;
-        account.refreshToken = tokens.refreshToken ?? account.refreshToken;
-        account.expiresAt = expiryIso(tokens.expiresIn);
-        saveAccount(account);
-        logger.info(platform, "Token rinnovato automaticamente", undefined, userId);
-      }
-    } catch (err) {
-      logger.warn(platform, "Refresh token fallito", String(err), userId);
-    }
-  }
+  if (needsRefresh(account)) await refreshAccount(account);
   return getAccount(userId, platform);
 }
 
@@ -143,6 +134,31 @@ async function publishTarget(post: Post, target: PostTarget) {
 }
 
 /**
+ * Libera il disco dopo una pubblicazione riuscita: elimina i media del post
+ * che nessun contenuto in coda usa più. Disattivabile con l'impostazione
+ * `autoCleanupMedia` = "off" (Impostazioni → Spazio).
+ */
+async function cleanupPublishedMedia(post: Post) {
+  if (getSetting(post.userId, "autoCleanupMedia", "on") !== "on") return;
+  let freed = 0;
+  let count = 0;
+  for (const media of reclaimablePostMedia(post.id)) {
+    deleteMediaSystem(media.id);
+    await deleteFile(media.filename);
+    freed += media.size;
+    count++;
+  }
+  if (count > 0) {
+    logger.info(
+      "media",
+      `Post #${post.id} pubblicato: rimossi ${count} media dal disco (${(freed / 1024 / 1024).toFixed(1)} MB liberati)`,
+      undefined,
+      post.userId
+    );
+  }
+}
+
+/**
  * Pubblica un post. Senza opzioni prova tutti i target pending/failed (usato da
  * "Pubblica ora" e dal primo tentativo programmato). Con `onlyTargetIds` prova
  * solo quei target (usato dal retry automatico per rispettare il backoff).
@@ -166,6 +182,8 @@ export async function publishPost(
   }
 
   const updated = getPostSystem(postId)!;
-  setPostStatus(postId, computePostStatus(updated.targets.map((t) => t.status)));
+  const status = computePostStatus(updated.targets.map((t) => t.status));
+  setPostStatus(postId, status);
+  if (status === "published") await cleanupPublishedMedia(updated);
   return getPostSystem(postId);
 }

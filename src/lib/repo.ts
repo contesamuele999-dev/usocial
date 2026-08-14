@@ -81,6 +81,54 @@ function rowToPost(r: Record<string, unknown>): Post {
   };
 }
 
+/**
+ * Costruisce i Post di una lista di righe con 2 sole query (target e media di
+ * tutti i post in blocco) invece di 2 query per post: la dashboard e il
+ * calendario con centinaia di post facevano altrimenti centinaia di query.
+ */
+function hydratePosts(rows: Record<string, unknown>[]): Post[] {
+  if (rows.length === 0) return [];
+  const db = getDb();
+  const ids = rows.map((r) => r.id as number);
+  const inClause = `(${ids.map(() => "?").join(",")})`;
+
+  const targets = new Map<number, PostTarget[]>();
+  for (const r of db
+    .prepare(`SELECT * FROM post_targets WHERE post_id IN ${inClause} ORDER BY platform`)
+    .all(...ids) as Record<string, unknown>[]) {
+    const list = targets.get(r.post_id as number) ?? [];
+    list.push(rowToTarget(r));
+    targets.set(r.post_id as number, list);
+  }
+
+  const media = new Map<number, MediaItem[]>();
+  for (const r of db
+    .prepare(
+      `SELECT pm.post_id AS _post_id, m.* FROM media m
+       JOIN post_media pm ON pm.media_id = m.id
+       WHERE pm.post_id IN ${inClause} ORDER BY pm.sort`
+    )
+    .all(...ids) as Record<string, unknown>[]) {
+    const list = media.get(r._post_id as number) ?? [];
+    list.push(rowToMedia(r));
+    media.set(r._post_id as number, list);
+  }
+
+  return rows.map((r) => ({
+    id: r.id as number,
+    userId: r.user_id as number,
+    title: r.title as string,
+    body: r.body as string,
+    hashtags: r.hashtags as string,
+    status: r.status as PostStatus,
+    scheduledAt: r.scheduled_at as string | null,
+    createdAt: r.created_at as string,
+    updatedAt: r.updated_at as string,
+    targets: targets.get(r.id as number) ?? [],
+    media: media.get(r.id as number) ?? [],
+  }));
+}
+
 // ---------- POSTS ----------
 
 export interface PostInput {
@@ -112,7 +160,7 @@ export function listPosts(
     params.push(like, like, like);
   }
   sql += " ORDER BY COALESCE(scheduled_at, created_at) DESC";
-  let posts = (db.prepare(sql).all(...params) as Record<string, unknown>[]).map(rowToPost);
+  let posts = hydratePosts(db.prepare(sql).all(...params) as Record<string, unknown>[]);
   if (filter?.platform) {
     posts = posts.filter((p) => p.targets.some((t) => t.platform === filter.platform));
   }
@@ -301,7 +349,7 @@ export function duePosts(now: Date): Post[] {
   const rows = getDb()
     .prepare("SELECT * FROM posts WHERE status = 'scheduled' AND scheduled_at <= ?")
     .all(now.toISOString()) as Record<string, unknown>[];
-  return rows.map(rowToPost);
+  return hydratePosts(rows);
 }
 
 /**
@@ -450,6 +498,33 @@ export function deleteMedia(id: number, userId: number): MediaItem | null {
   return item;
 }
 
+/**
+ * Media del post che nessun altro contenuto ancora in coda sta usando.
+ * Dopo una pubblicazione riuscita possono essere tolti dal disco: il contenuto
+ * ormai vive sulla piattaforma e lo spazio della VM è la risorsa più scarsa.
+ */
+export function reclaimablePostMedia(postId: number): MediaItem[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT m.* FROM media m
+       JOIN post_media pm ON pm.media_id = m.id
+       WHERE pm.post_id = ?
+         AND NOT EXISTS (
+           SELECT 1 FROM post_media pm2
+           JOIN posts p2 ON p2.id = pm2.post_id
+           WHERE pm2.media_id = m.id
+             AND p2.status IN ('draft','scheduled','publishing','partial')
+         )`
+    )
+    .all(postId) as Record<string, unknown>[];
+  return rows.map(rowToMedia);
+}
+
+/** Elimina un media senza controllo utente (usato dalla pulizia post-pubblicazione). */
+export function deleteMediaSystem(id: number): void {
+  getDb().prepare("DELETE FROM media WHERE id = ?").run(id);
+}
+
 export function listFolders(userId: number): string[] {
   const rows = getDb()
     .prepare("SELECT DISTINCT folder FROM media WHERE user_id = ? AND folder != '' ORDER BY folder")
@@ -485,6 +560,12 @@ export function listAccounts(userId: number): Account[] {
   const rows = getDb()
     .prepare("SELECT * FROM accounts WHERE user_id = ?")
     .all(userId) as Record<string, unknown>[];
+  return rows.map(rowToAccount);
+}
+
+/** Tutti gli account di tutti gli utenti (usato dal rinnovo token dello scheduler). */
+export function allAccountsSystem(): Account[] {
+  const rows = getDb().prepare("SELECT * FROM accounts").all() as Record<string, unknown>[];
   return rows.map(rowToAccount);
 }
 

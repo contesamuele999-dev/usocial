@@ -169,7 +169,62 @@ utente e operano **solo** sui dati dell'utente loggato.
 | GET | `/api/connect/:platform` | avvia OAuth per collegare un account all'utente |
 | POST/DELETE | `/api/accounts/:platform` | verifica token / disconnetti |
 | GET | `/api/logs` | log applicativi |
+| GET/PUT | `/api/settings` | preferenze (es. pulizia media dopo la pubblicazione) |
+| GET/POST/DELETE | `/api/keys` | chiavi API per gli agenti IA |
 | GET | `/api/export` | backup JSON |
+
+---
+
+## 🤖 Uso da un agente IA (Claude Code e altri)
+
+Ogni endpoint accetta, oltre al cookie di sessione, l'header
+`Authorization: Bearer usk_…` con una chiave creata in **Impostazioni → Agenti IA**
+(a DB resta solo l'hash SHA-256: la chiave in chiaro si vede una volta sola).
+
+```bash
+# caricare un video (streaming: nessun limite pratico di dimensione)
+curl -X POST "$USOCIAL_URL/api/media" \
+  -H "Authorization: Bearer $USOCIAL_API_KEY" \
+  -H "Content-Type: video/mp4" -H "x-filename: reel.mp4" \
+  --data-binary @reel.mp4
+
+# programmare un post
+curl -X POST "$USOCIAL_URL/api/posts" \
+  -H "Authorization: Bearer $USOCIAL_API_KEY" -H "Content-Type: application/json" \
+  -d '{"body":"Ciao!","platforms":["instagram"],"mediaIds":[12],
+       "scheduledAt":"2026-09-01T18:30:00Z","status":"scheduled"}'
+```
+
+### Server MCP
+
+`scripts/mcp-server.mjs` espone le stesse operazioni come tool MCP (nessuna dipendenza,
+transport stdio):
+
+```bash
+claude mcp add usocial \
+  --env USOCIAL_URL=https://tuo-dominio \
+  --env USOCIAL_API_KEY=usk_… \
+  -- node scripts/mcp-server.mjs
+```
+
+Tool disponibili: `usocial_platforms`, `usocial_list_posts`, `usocial_get_post`,
+`usocial_upload_media`, `usocial_list_media`, `usocial_create_post`,
+`usocial_update_post`, `usocial_publish_post`, `usocial_delete_post`, `usocial_storage`.
+
+---
+
+## Durata dei token social
+
+Lo scheduler rinnova i token **ogni ora**, prima della scadenza: si può quindi
+programmare un post anche a mesi di distanza senza toccare l'app. Limiti imposti dalle
+piattaforme:
+
+| Piattaforma | Durata | Cosa serve |
+|---|---|---|
+| Facebook / Instagram | token long-lived 60 giorni, esteso a ogni rinnovo | niente |
+| YouTube | access token 1 h, refresh token permanente | l'app OAuth deve essere **"In produzione"** su Google Cloud: in "Testing" il refresh token scade dopo 7 giorni |
+| TikTok | access token 24 h, refresh token 365 giorni | riconnessione una volta l'anno |
+| LinkedIn | 60 giorni, senza refresh token | riconnessione ogni 60 giorni |
 
 ---
 

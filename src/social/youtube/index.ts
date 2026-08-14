@@ -12,7 +12,14 @@ export const youtubeModule: SocialModule = {
   platform: "youtube",
   displayName: "YouTube",
   color: "#FF0000",
-  limits: { maxChars: 5000, requiresMedia: true, supportsTitle: true, mediaTypes: ["video"], maxMedia: 1 },
+  limits: {
+    maxChars: 5000,
+    requiresMedia: true,
+    supportsTitle: true,
+    mediaTypes: ["video"],
+    maxMedia: 1,
+    mimeTypes: ["video/mp4", "video/quicktime", "video/webm"],
+  },
   oauth: {
     authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
     tokenUrl: "https://oauth2.googleapis.com/token",

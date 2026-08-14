@@ -23,9 +23,6 @@ export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const hasSession = req.cookies.has(SESSION_COOKIE);
 
-  // Le route API si autogestiscono (auth, callback OAuth, file media pubblici).
-  if (pathname.startsWith("/api")) return NextResponse.next();
-
   // Pagine legali: accessibili a chiunque, nessun redirect.
   if (ALWAYS_PUBLIC.includes(pathname)) return NextResponse.next();
 
@@ -42,9 +39,14 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  // Esclude gli asset di Next e QUALSIASI file statico con estensione
-  // (es. /icon.png, /apple-icon.png in public/): senza questa esclusione il
-  // middleware li redirigerebbe a /login per gli utenti non autenticati,
-  // impedendo a next/image di caricare l'icona nelle pagine pubbliche.
-  matcher: ["/((?!_next/static|_next/image|.*\\.[\\w]+$).*)"],
+  // Esclude:
+  // - /api: le route si autenticano da sé. Soprattutto, il middleware bufferizza
+  //   il body a max 10 MB ("Request body exceeded 10MB… only the first 10MB will
+  //   be available"): passandoci dentro, l'upload di un video da 144 MB arrivava
+  //   troncato e faceva fallire la richiesta. Fuori dal matcher il body arriva intero.
+  // - gli asset di Next e QUALSIASI file statico con estensione (es. /icon.png,
+  //   /apple-icon.png in public/): senza questa esclusione il middleware li
+  //   redirigerebbe a /login per gli utenti non autenticati, impedendo a
+  //   next/image di caricare l'icona nelle pagine pubbliche.
+  matcher: ["/((?!api|_next/static|_next/image|.*\\.[\\w]+$).*)"],
 };

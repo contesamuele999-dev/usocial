@@ -8,7 +8,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { api, type PlatformInfo } from "@/lib/client";
+import { api, getPlatforms, type PlatformInfo } from "@/lib/client";
 import { useI18n } from "@/lib/i18n";
 import type { Platform } from "@/types";
 
@@ -38,7 +38,7 @@ export default function StudioPage() {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    api<PlatformInfo[]>("/api/platforms").then(setPlatforms).catch(() => {});
+    getPlatforms().then(setPlatforms).catch(() => {});
   }, []);
 
   const current = AGENTS.find((a) => a.id === agent)!;

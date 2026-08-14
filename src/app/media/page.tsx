@@ -3,7 +3,7 @@
  * Libreria media: upload (anche drag&drop), ricerca, tag, cartelle, anteprima.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api } from "@/lib/client";
+import { api, uploadMedia } from "@/lib/client";
 import { useI18n, type TFunc } from "@/lib/i18n";
 import type { MediaItem } from "@/types";
 import { MediaThumb, mediaUrl } from "@/components/MediaPicker";
@@ -73,6 +73,7 @@ export default function MediaPage() {
   const [folder, setFolder] = useState("");
   const [preview, setPreview] = useState<MediaItem | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState<{ name: string; percent: number; index: number; total: number } | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -97,19 +98,23 @@ export default function MediaPage() {
   }, [load]);
 
   const upload = async (files: FileList | File[] | null) => {
-    if (!files) return;
+    const list = files ? Array.from(files) : [];
+    if (list.length === 0) return;
     setUploading(true);
     try {
-      for (const file of Array.from(files)) {
-        const form = new FormData();
-        form.append("file", file);
-        if (folder) form.append("folder", folder);
-        await api("/api/media", { method: "POST", body: form });
+      for (let i = 0; i < list.length; i++) {
+        const file = list[i];
+        setProgress({ name: file.name, percent: 0, index: i + 1, total: list.length });
+        await uploadMedia(file, {
+          folder,
+          onProgress: (percent) => setProgress({ name: file.name, percent, index: i + 1, total: list.length }),
+        });
       }
       await load();
     } catch (err) {
-      alert(String(err));
+      alert(String(err instanceof Error ? err.message : err));
     } finally {
+      setProgress(null);
       setUploading(false);
     }
   };
@@ -172,6 +177,28 @@ export default function MediaPage() {
           ))}
         </select>
       </div>
+
+      {/* Avanzamento upload */}
+      {progress && (
+        <div className="card">
+          <div className="flex justify-between text-sm text-gray-500">
+            <span className="truncate">
+              {progress.total > 1 ? `(${progress.index}/${progress.total}) ` : ""}
+              {progress.name}
+            </span>
+            <span>{progress.percent}%</span>
+          </div>
+          <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+            <div
+              className="h-full rounded-full bg-brand-600 transition-all"
+              style={{ width: `${progress.percent}%` }}
+            />
+          </div>
+          {progress.percent === 100 && (
+            <p className="mt-1 text-xs text-gray-400">{t("mediaPicker.processing")}</p>
+          )}
+        </div>
+      )}
 
       {/* Zona drag & drop + griglia */}
       <div

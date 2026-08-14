@@ -1,10 +1,12 @@
 "use client";
 /**
  * Selettore media per l'editor: mostra la libreria, permette upload rapido
- * e selezione multipla (per i caroselli l'ordine di selezione conta).
+ * (pulsante o drag & drop, con barra di avanzamento) e selezione multipla
+ * (per i caroselli l'ordine di selezione conta).
+ * Avvisa se un file selezionato non è pubblicabile su una delle piattaforme scelte.
  */
 import { useEffect, useRef, useState } from "react";
-import { api } from "@/lib/client";
+import { api, mediaWarnings, uploadMedia, type PlatformInfo } from "@/lib/client";
 import { useI18n } from "@/lib/i18n";
 import type { MediaItem } from "@/types";
 
@@ -24,13 +26,19 @@ export function MediaThumb({ item, className = "" }: { item: MediaItem; classNam
 export function MediaPicker({
   selected,
   onChange,
+  platforms = [],
 }: {
   selected: number[];
   onChange: (ids: number[]) => void;
+  /** Piattaforme selezionate per il post: servono per gli avvisi di formato. */
+  platforms?: PlatformInfo[];
 }) {
   const { t } = useI18n();
   const [items, setItems] = useState<MediaItem[]>([]);
-  const [uploading, setUploading] = useState(false);
+  /** null = nessun upload in corso; altrimenti stato della barra. */
+  const [progress, setProgress] = useState<{ name: string; percent: number; index: number; total: number } | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [error, setError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = () => api<{ items: MediaItem[] }>("/api/media").then((r) => setItems(r.items));
@@ -42,35 +50,62 @@ export function MediaPicker({
     onChange(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id]);
   };
 
-  const upload = async (files: FileList | null) => {
-    if (!files?.length) return;
-    setUploading(true);
+  const upload = async (files: FileList | File[] | null) => {
+    const list = files ? Array.from(files) : [];
+    if (list.length === 0) return;
+    setError("");
+    const added: number[] = [];
     try {
-      for (const file of Array.from(files)) {
-        const form = new FormData();
-        form.append("file", file);
-        const item = await api<MediaItem>("/api/media", { method: "POST", body: form });
-        onChange([...selected, item.id]);
+      for (let i = 0; i < list.length; i++) {
+        const file = list[i];
+        setProgress({ name: file.name, percent: 0, index: i + 1, total: list.length });
+        const item = await uploadMedia(file, {
+          onProgress: (percent) => setProgress({ name: file.name, percent, index: i + 1, total: list.length }),
+        });
+        added.push(item.id);
       }
+      onChange([...selected, ...added]);
       await load();
     } catch (err) {
-      alert(String(err));
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setUploading(false);
+      setProgress(null);
     }
   };
 
+  const selectedItems = selected
+    .map((id) => items.find((m) => m.id === id))
+    .filter((m): m is MediaItem => !!m);
+  const warnings = mediaWarnings(selectedItems, platforms, t);
+
   return (
-    <div>
-      <div className="mb-2 flex items-center justify-between">
+    <div
+      onDragOver={(e) => {
+        e.preventDefault();
+        setDragOver(true);
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragOver(false);
+        upload(e.dataTransfer.files);
+      }}
+      className={`rounded-lg transition ${
+        dragOver ? "bg-brand-50 outline-dashed outline-2 outline-brand-500 dark:bg-brand-700/10" : ""
+      }`}
+    >
+      <div className="mb-2 flex items-center justify-between gap-2">
         <span className="text-sm font-medium">{t("mediaPicker.selected", { count: selected.length })}</span>
+        <span className="hidden flex-1 text-center text-xs text-gray-400 sm:block">
+          {t("mediaPicker.dropHint")}
+        </span>
         <button
           type="button"
           className="btn-secondary px-3 py-1.5 text-xs"
           onClick={() => fileRef.current?.click()}
-          disabled={uploading}
+          disabled={!!progress}
         >
-          {uploading ? t("mediaPicker.uploading") : t("mediaPicker.uploadFile")}
+          {progress ? t("mediaPicker.uploading") : t("mediaPicker.uploadFile")}
         </button>
         <input
           ref={fileRef}
@@ -81,6 +116,38 @@ export function MediaPicker({
           onChange={(e) => upload(e.target.files)}
         />
       </div>
+
+      {progress && (
+        <div className="mb-2">
+          <div className="flex justify-between text-xs text-gray-500">
+            <span className="truncate">
+              {progress.total > 1 ? `(${progress.index}/${progress.total}) ` : ""}
+              {progress.name}
+            </span>
+            <span>{progress.percent}%</span>
+          </div>
+          <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+            <div
+              className="h-full rounded-full bg-brand-600 transition-all"
+              style={{ width: `${progress.percent}%` }}
+            />
+          </div>
+          {progress.percent === 100 && (
+            <p className="mt-1 text-xs text-gray-400">{t("mediaPicker.processing")}</p>
+          )}
+        </div>
+      )}
+
+      {error && <p className="mb-2 text-xs text-red-500">{error}</p>}
+
+      {warnings.length > 0 && (
+        <ul className="mb-2 space-y-0.5 rounded-lg bg-amber-50 p-2 text-xs text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+          {warnings.map((w) => (
+            <li key={w}>⚠️ {w}</li>
+          ))}
+        </ul>
+      )}
+
       {items.length === 0 ? (
         <p className="text-sm text-gray-500">{t("mediaPicker.empty")}</p>
       ) : (

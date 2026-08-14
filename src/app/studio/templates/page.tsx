@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { api, type PlatformInfo } from "@/lib/client";
+import { api, getPlatforms, type PlatformInfo } from "@/lib/client";
 import { useI18n } from "@/lib/i18n";
 import { downloadBlob, renderSlidesToBlobs, type Ratio } from "@/lib/carousel";
 import { CAROUSEL_FONTS, DEFAULT_FONT_CSS, preloadAllCarouselFonts } from "@/lib/fonts";
@@ -55,7 +55,7 @@ export default function TemplatesPage() {
   }, []);
   useEffect(() => {
     load();
-    api<PlatformInfo[]>("/api/platforms").then(setPlatforms).catch(() => {});
+    getPlatforms().then(setPlatforms).catch(() => {});
   }, [load]);
 
   const startNew = (kind: TemplateKind) => {

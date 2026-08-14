@@ -87,6 +87,18 @@ CREATE TABLE IF NOT EXISTS accounts (
   UNIQUE(user_id, platform)
 );
 
+-- Chiavi API per gli agenti IA (CLI/MCP). Si salva solo l'hash SHA-256:
+-- la chiave in chiaro viene mostrata una volta sola alla creazione.
+CREATE TABLE IF NOT EXISTS api_keys (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL DEFAULT '',
+  key_hash TEXT NOT NULL UNIQUE,
+  prefix TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  last_used_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS logs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER,
@@ -137,6 +149,8 @@ CREATE INDEX IF NOT EXISTS idx_templates_user ON templates(user_id);
 CREATE INDEX IF NOT EXISTS idx_lives_user ON lives(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_logs_created ON logs(created_at);
+CREATE INDEX IF NOT EXISTS idx_post_media_media ON post_media(media_id);
+CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys(user_id);
 `;
 
 function tableExists(db: Database.Database, table: string): boolean {

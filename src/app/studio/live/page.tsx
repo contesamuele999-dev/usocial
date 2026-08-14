@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { api, type PlatformInfo } from "@/lib/client";
+import { api, getPlatforms, type PlatformInfo } from "@/lib/client";
 import { useI18n } from "@/lib/i18n";
 import type { Live, Platform } from "@/types";
 
@@ -29,7 +29,7 @@ export default function LivePage() {
   }, []);
   useEffect(() => {
     load();
-    api<PlatformInfo[]>("/api/platforms").then(setPlatforms).catch(() => {});
+    getPlatforms().then(setPlatforms).catch(() => {});
   }, [load]);
 
   const create = async () => {

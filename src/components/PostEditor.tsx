@@ -5,7 +5,7 @@
  */
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { api, fmtDate, retryInfo, type PlatformInfo } from "@/lib/client";
+import { api, getPlatforms, fmtDate, retryInfo, type PlatformInfo } from "@/lib/client";
 import { useI18n } from "@/lib/i18n";
 import type { Platform, Post } from "@/types";
 import { EmojiPicker } from "./EmojiPicker";
@@ -41,7 +41,7 @@ export function PostEditor({ initial }: { initial: Post | null }) {
   const bodyRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    api<PlatformInfo[]>("/api/platforms").then(setPlatforms).catch(() => {});
+    getPlatforms().then(setPlatforms).catch(() => {});
   }, []);
 
   const togglePlatform = (p: Platform) =>
@@ -187,7 +187,11 @@ export function PostEditor({ initial }: { initial: Post | null }) {
         />
 
         <div className="card">
-          <MediaPicker selected={mediaIds} onChange={setMediaIds} />
+          <MediaPicker
+            selected={mediaIds}
+            onChange={setMediaIds}
+            platforms={platforms.filter((p) => selected.includes(p.platform))}
+          />
         </div>
 
         {/* Anteprime adattate per piattaforma */}

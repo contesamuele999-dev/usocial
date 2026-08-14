@@ -13,7 +13,14 @@ export const linkedinModule: SocialModule = {
   platform: "linkedin",
   displayName: "LinkedIn",
   color: "#0A66C2",
-  limits: { maxChars: 3000, requiresMedia: false, supportsTitle: false, mediaTypes: ["image", "video"], maxMedia: 9 },
+  limits: {
+    maxChars: 3000,
+    requiresMedia: false,
+    supportsTitle: false,
+    mediaTypes: ["image", "video"],
+    maxMedia: 9,
+    mimeTypes: ["image/jpeg", "image/png", "image/gif", "video/mp4"],
+  },
   oauth: {
     authorizeUrl: "https://www.linkedin.com/oauth/v2/authorization",
     tokenUrl: "https://www.linkedin.com/oauth/v2/accessToken",

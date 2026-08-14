@@ -14,7 +14,15 @@ export const tiktokModule: SocialModule = {
   platform: "tiktok",
   displayName: "TikTok",
   color: "#010101",
-  limits: { maxChars: 2200, requiresMedia: true, supportsTitle: true, mediaTypes: ["video"], maxMedia: 1 },
+  limits: {
+    maxChars: 2200,
+    requiresMedia: true,
+    supportsTitle: true,
+    mediaTypes: ["video"],
+    maxMedia: 1,
+    // WebM non è accettato: le registrazioni in-app vanno convertite in MP4.
+    mimeTypes: ["video/mp4", "video/quicktime"],
+  },
   oauth: {
     authorizeUrl: "https://www.tiktok.com/v2/auth/authorize/",
     tokenUrl: `${API}/oauth/token/`,

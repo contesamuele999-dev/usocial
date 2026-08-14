@@ -99,6 +99,72 @@ export function getSessionUser(token: string | undefined): User | null {
   return getUserById(row.user_id);
 }
 
+// ---------- chiavi API (agenti IA: CLI, MCP, script) ----------
+
+export interface ApiKeyInfo {
+  id: number;
+  name: string;
+  prefix: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
+function hashKey(key: string): string {
+  return crypto.createHash("sha256").update(key).digest("hex");
+}
+
+/**
+ * Crea una chiave API. Il valore in chiaro è restituito UNA sola volta:
+ * a DB resta solo l'hash, come per le password.
+ */
+export function createApiKey(userId: number, name: string): { key: string } & ApiKeyInfo {
+  const key = `usk_${crypto.randomBytes(24).toString("hex")}`;
+  const prefix = key.slice(0, 12);
+  const info = getDb()
+    .prepare("INSERT INTO api_keys (user_id, name, key_hash, prefix) VALUES (?, ?, ?, ?)")
+    .run(userId, name.trim() || "agente IA", hashKey(key), prefix);
+  const row = getDb()
+    .prepare("SELECT * FROM api_keys WHERE id = ?")
+    .get(info.lastInsertRowid as number) as Record<string, unknown>;
+  return {
+    key,
+    id: row.id as number,
+    name: row.name as string,
+    prefix,
+    createdAt: row.created_at as string,
+    lastUsedAt: null,
+  };
+}
+
+export function listApiKeys(userId: number): ApiKeyInfo[] {
+  const rows = getDb()
+    .prepare("SELECT * FROM api_keys WHERE user_id = ? ORDER BY id DESC")
+    .all(userId) as Record<string, unknown>[];
+  return rows.map((r) => ({
+    id: r.id as number,
+    name: r.name as string,
+    prefix: r.prefix as string,
+    createdAt: r.created_at as string,
+    lastUsedAt: r.last_used_at as string | null,
+  }));
+}
+
+export function deleteApiKey(id: number, userId: number): boolean {
+  return getDb().prepare("DELETE FROM api_keys WHERE id = ? AND user_id = ?").run(id, userId).changes > 0;
+}
+
+/** Utente proprietario della chiave (aggiorna l'ultimo utilizzo), o null. */
+export function getUserByApiKey(key: string): User | null {
+  const row = getDb().prepare("SELECT * FROM api_keys WHERE key_hash = ?").get(hashKey(key)) as
+    | { id: number; user_id: number }
+    | undefined;
+  if (!row) return null;
+  getDb()
+    .prepare("UPDATE api_keys SET last_used_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?")
+    .run(row.id);
+  return getUserById(row.user_id);
+}
+
 // ---------- lettura cookie dalla request ----------
 
 export function readSessionToken(req: Request): string | undefined {
@@ -106,8 +172,14 @@ export function readSessionToken(req: Request): string | undefined {
   return cookie.match(new RegExp(`(?:^|; )${SESSION_COOKIE}=([^;]+)`))?.[1];
 }
 
-/** Utente corrente o null. */
+/**
+ * Utente corrente o null.
+ * Due modi di autenticarsi: cookie di sessione (browser) oppure
+ * `Authorization: Bearer usk_…` (agenti IA via API/MCP).
+ */
 export function getRequestUser(req: Request): User | null {
+  const bearer = req.headers.get("authorization")?.match(/^Bearer\s+(\S+)$/i)?.[1];
+  if (bearer) return getUserByApiKey(bearer);
   return getSessionUser(readSessionToken(req));
 }
 

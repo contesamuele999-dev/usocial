@@ -6,6 +6,25 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 3000
+    },
+    {
+      "name": "kinesiology",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8766", "--directory",
+        "C:\\Users\\conte\\Documents\\PIVA\\AI\\Claude Structure\\Projects\\Kinesiology App\\Kinesiology App"],
+      "port": 8766
+    },
+    {
+      "name": "utree-dev",
+      "runtimeExecutable": ".claude\\utree-dev.bat",
+      "runtimeArgs": [],
+      "port": 5173
+    },
+    {
+      "name": "ugest-dev",
+      "runtimeExecutable": ".claude\\ugest-dev.bat",
+      "runtimeArgs": [],
+      "port": 3001
     }
   ]
 }

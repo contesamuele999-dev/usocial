@@ -57,6 +57,12 @@ export interface PlatformLimits {
   supportsTitle: boolean;
   mediaTypes: ("image" | "video")[];
   maxMedia: number;
+  /**
+   * MIME accettati dalla piattaforma. Serve alla UI per avvisare PRIMA della
+   * pubblicazione (es. Instagram accetta solo JPEG, non PNG né WebP).
+   * Se assente, si controlla solo `mediaTypes`.
+   */
+  mimeTypes?: string[];
 }
 
 export interface VerifyResult {

@@ -4,7 +4,7 @@
  */
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { api, type PlatformInfo } from "@/lib/client";
+import { api, getPlatforms, type PlatformInfo } from "@/lib/client";
 import { useI18n } from "@/lib/i18n";
 import type { Post } from "@/types";
 import { PostCard } from "@/components/PostCard";
@@ -19,7 +19,7 @@ export function DashboardClient() {
   const load = useCallback(async () => {
     const [p, pl] = await Promise.all([
       api<Post[]>("/api/posts"),
-      api<PlatformInfo[]>("/api/platforms"),
+      getPlatforms(),
     ]);
     setPosts(p);
     setPlatforms(pl);

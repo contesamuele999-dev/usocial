@@ -43,7 +43,14 @@ export const facebookModule: SocialModule = {
   platform: "facebook",
   displayName: "Facebook",
   color: "#1877F2",
-  limits: { maxChars: 63206, requiresMedia: false, supportsTitle: false, mediaTypes: ["image", "video"], maxMedia: 10 },
+  limits: {
+    maxChars: 63206,
+    requiresMedia: false,
+    supportsTitle: false,
+    mediaTypes: ["image", "video"],
+    maxMedia: 10,
+    mimeTypes: ["image/jpeg", "image/png", "image/gif", "image/webp", "video/mp4", "video/quicktime"],
+  },
   oauth: {
     authorizeUrl: "https://www.facebook.com/v21.0/dialog/oauth",
     tokenUrl: `${GRAPH}/oauth/access_token`,
@@ -119,5 +126,23 @@ export const facebookModule: SocialModule = {
     } catch (err) {
       return { ok: false, message: String(err) };
     }
+  },
+
+  /**
+   * Meta non usa refresh token: il token long-lived (60 giorni) si estende
+   * riscambiandolo con se stesso. Rinnovandolo periodicamente la connessione
+   * resta valida a tempo indeterminato senza riautorizzare.
+   * Il page token salvato in `meta` non scade finché il token utente è valido.
+   */
+  async refresh(account: Account): Promise<TokenSet> {
+    const { clientId, clientSecret } = env.oauth("facebook");
+    const r = await apiFetch(
+      `${GRAPH}/oauth/access_token?grant_type=fb_exchange_token&client_id=${clientId}&client_secret=${clientSecret}&fb_exchange_token=${account.accessToken}`
+    );
+    return {
+      accessToken: r.access_token as string,
+      refreshToken: account.refreshToken,
+      expiresIn: (r.expires_in as number) || 60 * 24 * 3600,
+    };
   },
 };

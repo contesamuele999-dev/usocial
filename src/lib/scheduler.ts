@@ -8,6 +8,8 @@
 import { logger } from "./logger";
 
 const INTERVAL_MS = 60_000;
+/** Ogni ora si controllano i token social vicini alla scadenza. */
+const TOKEN_INTERVAL_MS = 3600_000;
 
 export function startScheduler() {
   const g = globalThis as unknown as { __usocialScheduler?: boolean };
@@ -48,6 +50,20 @@ export function startScheduler() {
 
   setInterval(tick, INTERVAL_MS);
   setTimeout(tick, 5_000); // primo controllo poco dopo l'avvio
+
+  // Rinnovo proattivo dei token: senza questo, un post programmato fra mesi
+  // troverebbe l'access token scaduto (TikTok 24 h, Google 1 h).
+  const refreshTick = async () => {
+    try {
+      const { refreshExpiringAccounts } = await import("@/social/tokens");
+      const n = await refreshExpiringAccounts();
+      if (n > 0) logger.info("scheduler", `Rinnovati ${n} token social in scadenza`);
+    } catch (err) {
+      logger.error("scheduler", "Errore nel rinnovo dei token", String(err));
+    }
+  };
+  setInterval(refreshTick, TOKEN_INTERVAL_MS);
+  setTimeout(refreshTick, 15_000);
 }
 
 /** Rimette in coda i target rimasti in "publishing" (interrotti da un riavvio). */

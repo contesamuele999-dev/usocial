@@ -5,7 +5,7 @@
  */
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { api, fmtDate, retryInfo, type PlatformInfo } from "@/lib/client";
+import { api, getPlatforms, fmtDate, retryInfo, type PlatformInfo } from "@/lib/client";
 import { useI18n } from "@/lib/i18n";
 import type { LogEntry, Post } from "@/types";
 import { StatusBadge } from "@/components/PostCard";
@@ -22,7 +22,7 @@ export default function HistoryPage() {
       setPosts(all.filter((p) => p.targets.some((t) => t.status !== "pending")))
     );
     api<LogEntry[]>("/api/logs").then(setLogs);
-    api<PlatformInfo[]>("/api/platforms").then(setPlatforms);
+    getPlatforms().then(setPlatforms);
   }, []);
 
   return (

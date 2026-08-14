@@ -36,7 +36,16 @@ export const instagramModule: SocialModule = {
   platform: "instagram",
   displayName: "Instagram",
   color: "#E1306C",
-  limits: { maxChars: 2200, requiresMedia: true, supportsTitle: false, mediaTypes: ["image", "video"], maxMedia: 10 },
+  limits: {
+    maxChars: 2200,
+    requiresMedia: true,
+    supportsTitle: false,
+    mediaTypes: ["image", "video"],
+    maxMedia: 10,
+    // La Graph API accetta solo JPEG per le foto e MP4/MOV per i video:
+    // PNG, GIF e WebP vanno convertiti prima di pubblicare.
+    mimeTypes: ["image/jpeg", "video/mp4", "video/quicktime"],
+  },
   oauth: {
     authorizeUrl: "https://www.facebook.com/v21.0/dialog/oauth",
     tokenUrl: `${GRAPH}/oauth/access_token`,
@@ -138,5 +147,18 @@ export const instagramModule: SocialModule = {
     } catch (err) {
       return { ok: false, message: String(err) };
     }
+  },
+
+  /** Come Facebook: il token long-lived si estende riscambiandolo (vedi social/tokens.ts). */
+  async refresh(account: Account): Promise<TokenSet> {
+    const { clientId, clientSecret } = env.oauth("instagram");
+    const r = await apiFetch(
+      `${GRAPH}/oauth/access_token?grant_type=fb_exchange_token&client_id=${clientId}&client_secret=${clientSecret}&fb_exchange_token=${account.accessToken}`
+    );
+    return {
+      accessToken: r.access_token as string,
+      refreshToken: account.refreshToken,
+      expiresIn: (r.expires_in as number) || 60 * 24 * 3600,
+    };
   },
 };

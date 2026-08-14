@@ -5,7 +5,7 @@
  */
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { api, fmtDate, type PlatformInfo } from "@/lib/client";
+import { api, getPlatforms, fmtDate, type PlatformInfo } from "@/lib/client";
 import { useI18n } from "@/lib/i18n";
 
 function SettingsInner() {
@@ -16,7 +16,7 @@ function SettingsInner() {
   const [banner, setBanner] = useState<{ ok: boolean; text: string } | null>(null);
 
   const load = useCallback(() => {
-    api<PlatformInfo[]>("/api/platforms").then(setPlatforms);
+    getPlatforms(true).then(setPlatforms);
   }, []);
 
   useEffect(() => {
@@ -72,7 +72,9 @@ function SettingsInner() {
               {p.connected ? (
                 <p className="truncate text-sm text-gray-500">
                   {p.accountName}
-                  {p.expiresAt && t("settings.tokenExpires", { date: fmtDate(p.expiresAt) })}
+                  {p.autoRenew
+                    ? ` · ${t("settings.tokenAutoRenew")}`
+                    : p.expiresAt && t("settings.tokenExpires", { date: fmtDate(p.expiresAt) })}
                 </p>
               ) : (
                 <p className="text-sm text-gray-400">{t("settings.notConnected")}</p>
@@ -96,9 +98,12 @@ function SettingsInner() {
           </div>
         ))}
         <p className="text-xs text-gray-500">{t("settings.oauthHint")}</p>
+        <p className="text-xs text-gray-500">{t("settings.tokenHint")}</p>
       </section>
 
       <AiSettings />
+      <StorageSettings />
+      <ApiKeys />
 
       {/* Backup */}
       <section className="space-y-3">
@@ -116,6 +121,132 @@ function SettingsInner() {
 
       <DangerZone />
     </div>
+  );
+}
+
+/** Pulizia automatica dei media dopo la pubblicazione (spazio disco). */
+function StorageSettings() {
+  const { t } = useI18n();
+  const [cleanup, setCleanup] = useState(true);
+
+  useEffect(() => {
+    api<{ autoCleanupMedia: string }>("/api/settings")
+      .then((s) => setCleanup(s.autoCleanupMedia !== "off"))
+      .catch(() => {});
+  }, []);
+
+  const toggle = async (on: boolean) => {
+    setCleanup(on);
+    await api("/api/settings", {
+      method: "PUT",
+      body: JSON.stringify({ autoCleanupMedia: on ? "on" : "off" }),
+    });
+  };
+
+  return (
+    <section className="space-y-3">
+      <h2 className="text-lg font-semibold">{t("settings.storageTitle")}</h2>
+      <label className="card flex items-start gap-3">
+        <input
+          type="checkbox"
+          className="mt-1 h-4 w-4 accent-brand-600"
+          checked={cleanup}
+          onChange={(e) => toggle(e.target.checked)}
+        />
+        <span>
+          <span className="font-medium">{t("settings.cleanupLabel")}</span>
+          <span className="block text-sm text-gray-500">{t("settings.cleanupDesc")}</span>
+        </span>
+      </label>
+    </section>
+  );
+}
+
+/** Chiavi API per gli agenti IA (Claude Code e altri, via MCP o REST). */
+function ApiKeys() {
+  const { t } = useI18n();
+  const [keys, setKeys] = useState<
+    { id: number; name: string; prefix: string; createdAt: string; lastUsedAt: string | null }[]
+  >([]);
+  const [name, setName] = useState("");
+  const [fresh, setFresh] = useState("");
+
+  const load = useCallback(() => {
+    api<typeof keys>("/api/keys").then(setKeys).catch(() => {});
+  }, []);
+  useEffect(load, [load]);
+
+  const create = async () => {
+    const created = await api<{ key: string }>("/api/keys", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    });
+    setFresh(created.key); // mostrata una volta sola: a DB c'è solo l'hash
+    setName("");
+    load();
+  };
+
+  const revoke = async (id: number) => {
+    if (!confirm(t("settings.keyConfirmRevoke"))) return;
+    await api(`/api/keys?id=${id}`, { method: "DELETE" });
+    load();
+  };
+
+  return (
+    <section className="space-y-3">
+      <h2 className="text-lg font-semibold">{t("settings.agentsTitle")}</h2>
+      <div className="card space-y-3">
+        <p className="text-sm text-gray-500">{t("settings.agentsDesc")}</p>
+        <div className="flex flex-wrap gap-2">
+          <input
+            className="input flex-1"
+            placeholder={t("settings.keyNamePlaceholder")}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+          <button className="btn-primary" onClick={create}>
+            {t("settings.keyCreate")}
+          </button>
+        </div>
+
+        {fresh && (
+          <div className="rounded-lg border border-green-300 bg-green-50 p-3 dark:border-green-800 dark:bg-green-950/40">
+            <p className="text-sm font-medium">{t("settings.keyCopyNow")}</p>
+            <code className="mt-1 block break-all rounded bg-black/5 p-2 text-xs dark:bg-white/10">{fresh}</code>
+          </div>
+        )}
+
+        {keys.length > 0 && (
+          <ul className="divide-y divide-gray-200 text-sm dark:divide-gray-800">
+            {keys.map((k) => (
+              <li key={k.id} className="flex items-center gap-3 py-2">
+                <span className="flex-1 truncate">
+                  {k.name} · <code className="text-xs text-gray-500">{k.prefix}…</code>
+                  <span className="block text-xs text-gray-400">
+                    {k.lastUsedAt
+                      ? t("settings.keyLastUsed", { date: fmtDate(k.lastUsedAt) })
+                      : t("settings.keyNeverUsed")}
+                  </span>
+                </span>
+                <button className="btn-danger text-xs" onClick={() => revoke(k.id)}>
+                  {t("settings.keyRevoke")}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <details className="text-sm text-gray-500">
+          <summary className="cursor-pointer">{t("settings.mcpHow")}</summary>
+          <pre className="mt-2 overflow-x-auto rounded bg-black/5 p-2 text-xs dark:bg-white/10">
+{`claude mcp add usocial \\
+  --env USOCIAL_URL=${typeof window !== "undefined" ? window.location.origin : "http://localhost:3000"} \\
+  --env USOCIAL_API_KEY=usk_… \\
+  -- node scripts/mcp-server.mjs`}
+          </pre>
+        </details>
+      </div>
+    </section>
   );
 }
 

@@ -35,6 +35,7 @@ function makeTarget(over: Partial<PostTarget> = {}): PostTarget {
     platform: "facebook",
     adaptedTitle: null,
     adaptedBody: null,
+    postType: null,
     status: "pending",
     externalId: null,
     externalUrl: null,

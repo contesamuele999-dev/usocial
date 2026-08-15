@@ -13,7 +13,7 @@ import { describe, expect, it } from "vitest";
 // il repository usa DATA_DIR: va impostato PRIMA di importarlo
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "usocial-test-"));
 const { getDb } = await import("@/lib/db");
-const { reclaimablePostMedia } = await import("@/lib/repo");
+const { reclaimablePostMedia, mediaPendingUsage } = await import("@/lib/repo");
 const { needsRefresh } = await import("@/social/tokens");
 const { mediaWarnings } = await import("@/lib/client");
 const { instagramModule } = await import("@/social/instagram");
@@ -51,6 +51,16 @@ describe("pulizia media dopo la pubblicazione", () => {
       .run().lastInsertRowid as number;
     db.prepare("INSERT INTO post_media (post_id, media_id) VALUES (?, ?)").run(otherId, mediaId);
     expect(reclaimablePostMedia(postId)).toHaveLength(0);
+  });
+});
+
+describe("media in attesa di pubblicazione", () => {
+  it("elenca i post in coda che usano il media, e ignora quelli pubblicati", () => {
+    const scheduled = seed("scheduled", `c-${Date.now()}.mp4`);
+    const published = seed("published", `d-${Date.now()}.mp4`);
+    const pending = mediaPendingUsage(1);
+    expect(pending[scheduled.mediaId]?.map((u) => u.postId)).toEqual([scheduled.postId]);
+    expect(pending[published.mediaId]).toBeUndefined();
   });
 });
 

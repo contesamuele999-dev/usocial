@@ -11,6 +11,7 @@ import type {
   Live,
   LiveStatus,
   MediaItem,
+  MediaUsage,
   Platform,
   Post,
   PostStatus,
@@ -28,6 +29,7 @@ function rowToTarget(r: Record<string, unknown>): PostTarget {
     platform: r.platform as Platform,
     adaptedTitle: r.adapted_title as string | null,
     adaptedBody: r.adapted_body as string | null,
+    postType: (r.post_type as string | null) ?? null,
     status: r.status as PostTarget["status"],
     externalId: r.external_id as string | null,
     externalUrl: r.external_url as string | null,
@@ -139,6 +141,8 @@ export interface PostInput {
   status: PostStatus;
   platforms: Platform[];
   mediaIds: number[];
+  /** Tipo di pubblicazione per piattaforma, es. { instagram: "reel" }. */
+  postTypes?: Partial<Record<Platform, string>>;
 }
 
 export function listPosts(
@@ -210,7 +214,7 @@ export function createPost(userId: number, input: PostInput): Post {
       )
       .run(userId, input.title, input.body, input.hashtags, input.status, input.scheduledAt);
     const postId = info.lastInsertRowid as number;
-    syncTargets(postId, input.platforms);
+    syncTargets(postId, input.platforms, input.postTypes);
     syncMedia(postId, ownedMediaIds(userId, input.mediaIds));
     return postId;
   });
@@ -225,7 +229,7 @@ export function updatePost(id: number, userId: number, input: PostInput): Post |
       `UPDATE posts SET title = ?, body = ?, hashtags = ?, status = ?, scheduled_at = ?,
        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND user_id = ?`
     ).run(input.title, input.body, input.hashtags, input.status, input.scheduledAt, id, userId);
-    syncTargets(id, input.platforms);
+    syncTargets(id, input.platforms, input.postTypes);
     syncMedia(id, ownedMediaIds(userId, input.mediaIds));
   });
   tx();
@@ -233,7 +237,11 @@ export function updatePost(id: number, userId: number, input: PostInput): Post |
 }
 
 /** Allinea le piattaforme selezionate senza perdere lo stato di quelle già pubblicate. */
-function syncTargets(postId: number, platforms: Platform[]) {
+function syncTargets(
+  postId: number,
+  platforms: Platform[],
+  postTypes?: Partial<Record<Platform, string>>
+) {
   const db = getDb();
   const existing = db
     .prepare("SELECT platform FROM post_targets WHERE post_id = ?")
@@ -250,7 +258,17 @@ function syncTargets(postId: number, platforms: Platform[]) {
   const have = new Set(existing.map((e) => e.platform));
   for (const p of platforms) {
     if (!have.has(p)) {
-      db.prepare("INSERT INTO post_targets (post_id, platform) VALUES (?, ?)").run(postId, p);
+      db.prepare("INSERT INTO post_targets (post_id, platform, post_type) VALUES (?, ?, ?)").run(
+        postId,
+        p,
+        postTypes?.[p] ?? null
+      );
+    } else if (postTypes && p in postTypes) {
+      db.prepare("UPDATE post_targets SET post_type = ? WHERE post_id = ? AND platform = ?").run(
+        postTypes[p] ?? null,
+        postId,
+        p
+      );
     }
   }
 }
@@ -407,6 +425,29 @@ export function listMedia(userId: number, filter?: { q?: string; folder?: string
   }
   sql += " ORDER BY created_at DESC";
   return (getDb().prepare(sql).all(...params) as Record<string, unknown>[]).map(rowToMedia);
+}
+
+/**
+ * Per ogni media: i post ancora in coda (bozza/programmato/in corso/parziale)
+ * che lo useranno. Serve alla Libreria per dire quali file sono in attesa di
+ * essere pubblicati e quali si possono cancellare senza rovinare nulla.
+ * Una sola query per tutta la libreria.
+ */
+export function mediaPendingUsage(userId: number): Record<number, MediaUsage[]> {
+  const rows = getDb()
+    .prepare(
+      `SELECT pm.media_id AS mediaId, p.id AS postId, p.title, p.status, p.scheduled_at AS scheduledAt
+       FROM post_media pm
+       JOIN posts p ON p.id = pm.post_id
+       WHERE p.user_id = ? AND p.status IN ('draft','scheduled','publishing','partial')
+       ORDER BY p.scheduled_at`
+    )
+    .all(userId) as (MediaUsage & { mediaId: number })[];
+  const out: Record<number, MediaUsage[]> = {};
+  for (const { mediaId, ...usage } of rows) {
+    (out[mediaId] ??= []).push(usage);
+  }
+  return out;
 }
 
 /** Spazio totale occupato dai media di un utente, in byte. */

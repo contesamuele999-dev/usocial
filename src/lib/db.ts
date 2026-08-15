@@ -43,6 +43,8 @@ CREATE TABLE IF NOT EXISTS post_targets (
   platform TEXT NOT NULL,
   adapted_title TEXT,
   adapted_body TEXT,
+  -- tipo di pubblicazione scelto per questa piattaforma (feed, reel, story, …)
+  post_type TEXT,
   status TEXT NOT NULL DEFAULT 'pending',
   external_id TEXT,
   external_url TEXT,
@@ -183,6 +185,9 @@ function migrate(db: Database.Database) {
   }
   if (tableExists(db, "post_targets") && !hasColumn(db, "post_targets", "next_retry_at")) {
     db.exec("ALTER TABLE post_targets ADD COLUMN next_retry_at TEXT");
+  }
+  if (tableExists(db, "post_targets") && !hasColumn(db, "post_targets", "post_type")) {
+    db.exec("ALTER TABLE post_targets ADD COLUMN post_type TEXT");
   }
   if (tableExists(db, "accounts") && !hasColumn(db, "accounts", "user_id")) {
     db.exec("DROP TABLE accounts");

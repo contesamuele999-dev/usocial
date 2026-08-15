@@ -43,6 +43,8 @@ export interface PublishInput {
   title: string;
   body: string;
   media: PublishMedia[];
+  /** Tipo scelto dall'utente (`reel`, `story`, …); assente = predefinito della piattaforma. */
+  postType?: string | null;
 }
 
 export interface PublishResult {
@@ -63,6 +65,13 @@ export interface PlatformLimits {
    * Se assente, si controlla solo `mediaTypes`.
    */
   mimeTypes?: string[];
+  /**
+   * Tipi di pubblicazione realmente supportati dal modulo (il primo è il
+   * predefinito). Gli id sono tradotti nella UI con `postType.<id>`.
+   * Si elencano SOLO quelli che il modulo sa davvero pubblicare: un tipo
+   * mostrato ma non implementato produrrebbe un post sbagliato o un errore.
+   */
+  postTypes?: string[];
 }
 
 export interface VerifyResult {

@@ -236,6 +236,66 @@ poi in uSocial: **Impostazioni → Connetti**.
 
 ---
 
+## Il sito dà 502 ma i container sono su
+
+Guarda i log di Caddy:
+
+```bash
+docker compose -f docker-compose.prod.yml logs --tail=40 caddy
+```
+
+Se vedi `dial tcp: lookup usocial: i/o timeout`, il DNS interno di Docker non ha risposto:
+succede quando la VM è sotto pressione di memoria (swap piena). L'app è viva — puoi
+verificarlo da dentro la rete Docker:
+
+```bash
+docker exec usocial-caddy wget -qO- -S http://172.28.0.10:3000 2>&1 | head -3
+```
+
+Le versioni recenti di `Caddyfile` e `docker-compose.prod.yml` usano un **IP fisso**
+(`172.28.0.10`) proprio per togliere il DNS dal percorso. Se stai usando una versione
+vecchia, aggiorna il codice e ricrea i container.
+
+**Non lanciare `--build` sulla VM mentre l'app gira**: `next build` su 1 GB di RAM riempie
+la swap e blocca dockerd (è la causa più comune di questo 502). Ferma prima i container:
+
+```bash
+docker compose -f docker-compose.prod.yml down && docker compose -f docker-compose.prod.yml up -d --build
+```
+
+---
+
+## Il sito non risponde più dopo aver caricato un video
+
+Su una VM da 1 GB (e2-micro) la causa quasi sempre è la **memoria esaurita**: il kernel
+uccide il processo Node e il container resta giù. Verifica:
+
+```bash
+docker ps -a
+sudo dmesg -T | grep -iE "out of memory|killed process" | tail
+free -m
+df -h /
+```
+
+Se in `dmesg` compare `Killed process … node`, era OOM. Per rimettere in piedi l'app:
+
+```bash
+cd ~/usocial && docker compose -f docker-compose.prod.yml up -d
+```
+
+Poi assicurati che siano vere entrambe queste cose:
+
+1. **La swap è attiva** (passo 4 di questa guida): `free -m` deve mostrare una riga `Swap`
+   diversa da zero.
+2. **Il codice è aggiornato**: le versioni recenti caricano e pubblicano i video in
+   streaming, senza tenerli in RAM. Aggiorna con:
+
+```bash
+cd ~/usocial && git pull && docker compose -f docker-compose.prod.yml up -d --build
+```
+
+---
+
 ## Alternative a Google Cloud
 
 Se preferisci non usare Google Cloud, gli stessi passi (Ubuntu 22.04 + Docker) funzionano su:

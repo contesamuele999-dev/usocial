@@ -3,9 +3,9 @@
  * Libreria media: upload (anche drag&drop), ricerca, tag, cartelle, anteprima.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, uploadMedia } from "@/lib/client";
+import { api, fmtDate, uploadMedia } from "@/lib/client";
 import { useI18n, type TFunc } from "@/lib/i18n";
-import type { MediaItem } from "@/types";
+import type { MediaItem, MediaUsage } from "@/types";
 import { MediaThumb, mediaUrl } from "@/components/MediaPicker";
 
 interface Quota {
@@ -71,6 +71,9 @@ export default function MediaPage() {
   const [quota, setQuota] = useState<Quota | null>(null);
   const [q, setQ] = useState("");
   const [folder, setFolder] = useState("");
+  /** mediaId → post ancora in coda che lo useranno. */
+  const [pending, setPending] = useState<Record<number, MediaUsage[]>>({});
+  const [usage, setUsage] = useState<"all" | "pending" | "free">("all");
   const [preview, setPreview] = useState<MediaItem | null>(null);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState<{ name: string; percent: number; index: number; total: number } | null>(null);
@@ -81,9 +84,12 @@ export default function MediaPage() {
     const params = new URLSearchParams();
     if (q) params.set("q", q);
     if (folder) params.set("folder", folder);
-    const r = await api<{ items: MediaItem[]; folders: string[] }>(`/api/media?${params}`);
+    const r = await api<{ items: MediaItem[]; folders: string[]; pending: Record<number, MediaUsage[]> }>(
+      `/api/media?${params}`
+    );
     setItems(r.items);
     setFolders(r.folders);
+    setPending(r.pending || {});
     // la quota si aggiorna insieme alla lista (dopo upload/eliminazioni)
     try {
       setQuota(await api<Quota>("/api/storage"));
@@ -142,6 +148,10 @@ export default function MediaPage() {
     load();
   };
 
+  const visible = items.filter((m) =>
+    usage === "pending" ? !!pending[m.id] : usage === "free" ? !pending[m.id] : true
+  );
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -175,6 +185,16 @@ export default function MediaPage() {
               📁 {f}
             </option>
           ))}
+        </select>
+        {/* Filtro per capire al volo cosa è ancora in coda e cosa si può cancellare */}
+        <select
+          className="input w-auto"
+          value={usage}
+          onChange={(e) => setUsage(e.target.value as typeof usage)}
+        >
+          <option value="all">{t("media.filterAll")}</option>
+          <option value="pending">{t("media.filterPending")}</option>
+          <option value="free">{t("media.filterFree")}</option>
         </select>
       </div>
 
@@ -216,11 +236,11 @@ export default function MediaPage() {
           upload(e.dataTransfer.files);
         }}
       >
-        {items.length === 0 ? (
+        {visible.length === 0 ? (
           <p className="py-16 text-center text-sm text-gray-500">{t("media.empty")}</p>
         ) : (
           <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6">
-            {items.map((m) => (
+            {visible.map((m) => (
               <button
                 key={m.id}
                 className="group relative aspect-square overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800"
@@ -228,6 +248,14 @@ export default function MediaPage() {
                 title={m.originalName}
               >
                 <MediaThumb item={m} className="h-full w-full transition group-hover:scale-105" />
+                {pending[m.id] && (
+                  <span
+                    className="absolute right-1 top-1 rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white"
+                    title={t("media.pendingTitle")}
+                  >
+                    {t("media.pendingBadge")} {pending[m.id].length}
+                  </span>
+                )}
                 <span className="absolute inset-x-0 bottom-0 truncate bg-black/60 px-1.5 py-0.5 text-left text-[10px] text-white">
                   {m.originalName}
                 </span>
@@ -259,6 +287,30 @@ export default function MediaPage() {
             <p className="mb-3 text-xs text-gray-500">
               {preview.mime} · {(preview.size / 1024 / 1024).toFixed(2)} MB
             </p>
+
+            {/* Post in coda che useranno questo media: dice se è sicuro cancellarlo */}
+            {pending[preview.id] ? (
+              <div className="mb-3 rounded-lg bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                <p className="font-medium">
+                  ⏳ {t("media.pendingIn", { n: pending[preview.id].length })}
+                </p>
+                <ul className="mt-1 space-y-0.5">
+                  {pending[preview.id].map((u) => (
+                    <li key={u.postId}>
+                      <a href={`/posts/${u.postId}`} className="underline">
+                        {u.title || `Post #${u.postId}`}
+                      </a>{" "}
+                      —{" "}
+                      {u.scheduledAt
+                        ? t("media.scheduledFor", { date: fmtDate(u.scheduledAt) })
+                        : t("media.notScheduled")}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p className="mb-3 text-xs text-green-600">✅ {t("media.freeToDelete")}</p>
+            )}
             {preview.mime.startsWith("video/") && (
               <VideoConverter
                 item={preview}

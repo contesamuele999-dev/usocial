@@ -3,5 +3,13 @@
 # al container caddy nel docker-compose.prod.yml).
 # Caddy ottiene e rinnova da solo il certificato TLS: nessuna configurazione manuale.
 {$APP_DOMAIN} {
-	reverse_proxy usocial:3000
+	# IP fisso invece del nome `usocial`: il DNS interno di Docker, sotto
+	# pressione di memoria, andava in timeout e il sito rispondeva 502 pur
+	# essendo l'app viva (vedi docker-compose.prod.yml).
+	reverse_proxy 172.28.0.10:3000 {
+		# Durante un riavvio del container la connessione viene rifiutata per
+		# qualche secondo: riprova invece di restituire subito 502.
+		lb_try_duration 10s
+		lb_try_interval 500ms
+	}
 }

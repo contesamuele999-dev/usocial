@@ -9,7 +9,7 @@
 import { NextResponse } from "next/server";
 import { AppError } from "@/lib/errors";
 import { withUser } from "@/lib/api";
-import { createMedia, listFolders, listMedia } from "@/lib/repo";
+import { createMedia, listFolders, listMedia, mediaPendingUsage } from "@/lib/repo";
 import { saveFile, saveStream } from "@/lib/storage";
 import { assertQuota, getQuota } from "@/lib/quota";
 import { logger } from "@/lib/logger";
@@ -32,7 +32,13 @@ export const GET = withUser("media", async (req, _ctx, user) => {
     q: url.searchParams.get("q") || undefined,
     folder: url.searchParams.get("folder") || undefined,
   });
-  return NextResponse.json({ items, folders: listFolders(user.id) });
+  // `pending` dice, per ogni media, quali post in coda lo useranno: la Libreria
+  // segnala così cosa è in attesa di pubblicazione e cosa si può cancellare.
+  return NextResponse.json({
+    items,
+    folders: listFolders(user.id),
+    pending: mediaPendingUsage(user.id),
+  });
 });
 
 /** Registra il media a DB e risponde con quota aggiornata. */

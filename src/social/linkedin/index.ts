@@ -3,9 +3,9 @@
  * Richiede un'app LinkedIn con i prodotti "Sign In with LinkedIn using OpenID Connect"
  * e "Share on LinkedIn" (scope: openid profile w_member_social).
  */
-import fs from "node:fs";
 import type { Account } from "@/types";
 import { apiFetch, type PublishInput, type PublishResult, type SocialModule, type TokenSet } from "../types";
+import { fileBody } from "../upload";
 
 const API = "https://api.linkedin.com/v2";
 
@@ -20,6 +20,7 @@ export const linkedinModule: SocialModule = {
     mediaTypes: ["image", "video"],
     maxMedia: 9,
     mimeTypes: ["image/jpeg", "image/png", "image/gif", "video/mp4"],
+    postTypes: ["post"],
   },
   oauth: {
     authorizeUrl: "https://www.linkedin.com/oauth/v2/authorization",
@@ -67,11 +68,13 @@ export const linkedinModule: SocialModule = {
         "com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest"
       ] as { uploadUrl: string };
       const asset = value.asset as string;
-      const buf = await fs.promises.readFile(m.path);
       const up = await fetch(mech.uploadUrl, {
         method: "PUT",
-        headers: { Authorization: `Bearer ${account.accessToken}` },
-        body: new Uint8Array(buf),
+        headers: {
+          Authorization: `Bearer ${account.accessToken}`,
+          "Content-Length": String(m.size),
+        },
+        ...fileBody(m.path),
       });
       if (!up.ok) throw new Error(`LinkedIn: upload immagine fallito (HTTP ${up.status})`);
       assets.push(asset);

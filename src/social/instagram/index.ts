@@ -45,6 +45,7 @@ export const instagramModule: SocialModule = {
     // La Graph API accetta solo JPEG per le foto e MP4/MOV per i video:
     // PNG, GIF e WebP vanno convertiti prima di pubblicare.
     mimeTypes: ["image/jpeg", "video/mp4", "video/quicktime"],
+    postTypes: ["feed", "carousel", "reel", "story"],
   },
   oauth: {
     authorizeUrl: "https://www.facebook.com/v21.0/dialog/oauth",
@@ -90,13 +91,29 @@ export const instagramModule: SocialModule = {
     }
     const caption = input.body;
 
+    // Tipo scelto dall'utente; se manca si deduce dai media (più di uno =
+    // carosello, un video = reel, un'immagine = post nel feed).
+    const type =
+      input.postType ||
+      (input.media.length > 1 ? "carousel" : input.media[0].kind === "video" ? "reel" : "feed");
+
+    if (type === "carousel" && input.media.length < 2) {
+      throw new Error("Il carosello richiede almeno 2 media.");
+    }
+    if (type === "reel" && input.media[0].kind !== "video") {
+      throw new Error("Un reel richiede un video.");
+    }
+
     // helper: crea un container per un singolo media
     const createContainer = async (m: PublishInput["media"][number], extra: Record<string, string> = {}) => {
       const params = new URLSearchParams({ access_token: token, ...extra });
       if (m.kind === "video") {
-        params.set("media_type", "REELS");
+        // STORIES per le storie, REELS per tutto il resto: i video nel feed
+        // vengono comunque pubblicati come reel da Instagram.
+        params.set("media_type", type === "story" ? "STORIES" : "REELS");
         params.set("video_url", m.url);
       } else {
+        if (type === "story") params.set("media_type", "STORIES");
         params.set("image_url", m.url);
       }
       const json = await apiFetch(`${GRAPH}/${igUserId}/media`, { method: "POST", body: params });
@@ -105,9 +122,10 @@ export const instagramModule: SocialModule = {
 
     let creationId: string;
 
-    if (input.media.length === 1) {
+    if (type !== "carousel" && input.media.length >= 1) {
       const m = input.media[0];
-      creationId = await createContainer(m, { caption });
+      // Le storie non accettano didascalia.
+      creationId = await createContainer(m, type === "story" ? {} : { caption });
       if (m.kind === "video") await waitContainer(creationId, token);
     } else {
       // Carosello: container per ogni elemento + container CAROUSEL

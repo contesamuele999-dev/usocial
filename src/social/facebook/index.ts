@@ -4,10 +4,10 @@
  * Alla connessione viene scelta la prima Pagina dell'utente e salvato
  * il suo page access token in `meta`.
  */
-import fs from "node:fs";
 import type { Account } from "@/types";
 import { apiFetch, type PublishInput, type PublishResult, type SocialModule, type TokenSet } from "../types";
 import { env } from "@/lib/env";
+import { fileBlob } from "../upload";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 
@@ -19,8 +19,9 @@ async function uploadMultipart(
   const form = new FormData();
   for (const [k, v] of Object.entries(fields)) form.append(k, v);
   if (file) {
-    const buf = await fs.promises.readFile(file.path);
-    form.append(file.field, new Blob([buf], { type: file.mime }), file.name);
+    // Blob agganciato al file: i byte restano su disco (un reel da 114 MB in
+    // RAM faceva finire il processo in OOM).
+    form.append(file.field, await fileBlob(file.path, file.mime), file.name);
   }
   const res = await fetch(url, { method: "POST", body: form });
   const json = (await res.json()) as Record<string, unknown>;
@@ -50,6 +51,10 @@ export const facebookModule: SocialModule = {
     mediaTypes: ["image", "video"],
     maxMedia: 10,
     mimeTypes: ["image/jpeg", "image/png", "image/gif", "image/webp", "video/mp4", "video/quicktime"],
+    // ponytail: solo il feed. Reels e Storie della Pagina usano endpoint
+    // separati (/video_reels e /photo_stories, upload in più fasi): si
+    // aggiungono quando servono davvero, non prima.
+    postTypes: ["feed"],
   },
   oauth: {
     authorizeUrl: "https://www.facebook.com/v21.0/dialog/oauth",

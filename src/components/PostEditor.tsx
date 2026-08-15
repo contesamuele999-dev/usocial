@@ -33,6 +33,12 @@ export function PostEditor({ initial }: { initial: Post | null }) {
   const [hashtags, setHashtags] = useState(initial?.hashtags || "");
   const [selected, setSelected] = useState<Platform[]>(initial?.targets.map((t) => t.platform) || []);
   const [mediaIds, setMediaIds] = useState<number[]>(initial?.media.map((m) => m.id) || []);
+  // tipo di pubblicazione scelto per piattaforma (reel, storia, carosello, …)
+  const [postTypes, setPostTypes] = useState<Partial<Record<Platform, string>>>(
+    Object.fromEntries(
+      (initial?.targets || []).filter((t) => t.postType).map((t) => [t.platform, t.postType!])
+    )
+  );
   const [scheduled, setScheduled] = useState(isoToLocal(initial?.scheduledAt || null));
   // id=0 = precompilazione (es. data dal calendario), non un post salvato
   const [post, setPost] = useState<Post | null>(initial && initial.id > 0 ? initial : null);
@@ -62,6 +68,7 @@ export function PostEditor({ initial }: { initial: Post | null }) {
     status,
     platforms: selected,
     mediaIds,
+    postTypes,
   });
 
   /** Salva (crea o aggiorna) e ritorna il post. */
@@ -227,30 +234,49 @@ export function PostEditor({ initial }: { initial: Post | null }) {
           <div className="space-y-2">
             {platforms.map((p) => {
               const target = post?.targets.find((t) => t.platform === p.platform);
+              const isOn = selected.includes(p.platform);
+              const types = p.limits.postTypes || [];
               return (
-                <label
+                <div
                   key={p.platform}
-                  className={`flex cursor-pointer items-center gap-3 rounded-lg border p-2.5 transition ${
-                    selected.includes(p.platform)
-                      ? "border-brand-500 bg-brand-50 dark:bg-brand-700/10"
-                      : "border-gray-200 dark:border-gray-700"
+                  className={`rounded-lg border p-2.5 transition ${
+                    isOn ? "border-brand-500 bg-brand-50 dark:bg-brand-700/10" : "border-gray-200 dark:border-gray-700"
                   }`}
                 >
-                  <input
-                    type="checkbox"
-                    checked={selected.includes(p.platform)}
-                    onChange={() => togglePlatform(p.platform)}
-                    className="h-4 w-4 accent-brand-600"
-                  />
-                  <span className="h-3 w-3 rounded-full" style={{ backgroundColor: p.color }} />
-                  <span className="flex-1 text-sm font-medium">{p.displayName}</span>
-                  {target && target.status !== "pending" && <StatusBadge status={target.status} />}
-                  {!p.connected && (
-                    <span className="text-xs text-amber-600" title={t("editor.accountNotConnected")}>
-                      ⚠️
-                    </span>
+                  <label className="flex cursor-pointer items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={isOn}
+                      onChange={() => togglePlatform(p.platform)}
+                      className="h-4 w-4 accent-brand-600"
+                    />
+                    <span className="h-3 w-3 rounded-full" style={{ backgroundColor: p.color }} />
+                    <span className="flex-1 text-sm font-medium">{p.displayName}</span>
+                    {target && target.status !== "pending" && <StatusBadge status={target.status} />}
+                    {!p.connected && (
+                      <span className="text-xs text-amber-600" title={t("editor.accountNotConnected")}>
+                        ⚠️
+                      </span>
+                    )}
+                  </label>
+
+                  {/* Tipo di pubblicazione: solo se la piattaforma ne ha più di uno */}
+                  {isOn && types.length > 1 && (
+                    <select
+                      className="input mt-2 py-1 text-xs"
+                      value={postTypes[p.platform] || types[0]}
+                      onChange={(e) =>
+                        setPostTypes((prev) => ({ ...prev, [p.platform]: e.target.value }))
+                      }
+                    >
+                      {types.map((ty) => (
+                        <option key={ty} value={ty}>
+                          {t(`postType.${ty}`)}
+                        </option>
+                      ))}
+                    </select>
                   )}
-                </label>
+                </div>
               );
             })}
           </div>

@@ -42,6 +42,12 @@ export interface PostTarget {
   /** Testo adattato dall'AI per questa piattaforma (null = usa il testo base). */
   adaptedTitle: string | null;
   adaptedBody: string | null;
+  /**
+   * Tipo di pubblicazione su questa piattaforma (`feed`, `carousel`, `reel`,
+   * `story`, `short`, `video`, `post`). null = predefinito della piattaforma,
+   * dedotto dai media allegati.
+   */
+  postType: string | null;
   status: TargetStatus;
   externalId: string | null;
   externalUrl: string | null;
@@ -50,6 +56,14 @@ export interface PostTarget {
   attempts: number;
   /** Se valorizzato (ISO) e nel futuro: la pubblicazione fallita verrà ritentata a quell'ora. */
   nextRetryAt: string | null;
+}
+
+/** Post ancora in coda che usa un media (Libreria: "in attesa di pubblicazione"). */
+export interface MediaUsage {
+  postId: number;
+  title: string;
+  status: PostStatus;
+  scheduledAt: string | null;
 }
 
 export interface MediaItem {

@@ -22,6 +22,7 @@ const updateSchema = z.object({
   status: z.enum(["draft", "scheduled", "publishing", "published", "partial", "failed"]),
   platforms: z.array(z.enum(PLATFORMS)).default([]),
   mediaIds: z.array(z.number()).default([]),
+  postTypes: z.record(z.enum(PLATFORMS), z.string()).optional(),
 });
 
 export const GET = withUser<Ctx>("posts", async (_req, { params }, user) => {

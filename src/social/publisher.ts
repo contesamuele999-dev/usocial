@@ -89,7 +89,12 @@ async function publishTarget(post: Post, target: PostTarget) {
     if (!account) throw new Error(`Account ${mod.displayName} non connesso (vai in Impostazioni).`);
 
     const { title, body } = composeText(post, target);
-    const input: PublishInput = { title, body, media: toPublishMedia(post) };
+    const input: PublishInput = {
+      title,
+      body,
+      media: toPublishMedia(post),
+      postType: target.postType,
+    };
 
     if (mod.limits.requiresMedia && input.media.length === 0) {
       throw new Error(`${mod.displayName} richiede almeno un media.`);

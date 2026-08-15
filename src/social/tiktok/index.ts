@@ -3,10 +3,10 @@
  * Richiede un'app su developers.tiktok.com con lo scope video.publish approvato.
  * Nota: finché l'app TikTok non è "audited", i post vengono creati come privati.
  */
-import fs from "node:fs";
 import type { Account } from "@/types";
 import { apiFetch, type PublishInput, type PublishResult, type SocialModule, type TokenSet } from "../types";
 import { refreshWithToken } from "../oauth";
+import { fileBody } from "../upload";
 
 const API = "https://open.tiktokapis.com/v2";
 
@@ -22,6 +22,7 @@ export const tiktokModule: SocialModule = {
     maxMedia: 1,
     // WebM non è accettato: le registrazioni in-app vanno convertite in MP4.
     mimeTypes: ["video/mp4", "video/quicktime"],
+    postTypes: ["video"],
   },
   oauth: {
     authorizeUrl: "https://www.tiktok.com/v2/auth/authorize/",
@@ -75,16 +76,15 @@ export const tiktokModule: SocialModule = {
       throw new Error(`TikTok: init pubblicazione fallito — ${JSON.stringify(init).slice(0, 300)}`);
     }
 
-    // 2) upload del video in un unico chunk
-    const buf = await fs.promises.readFile(video.path);
+    // 2) upload del video in un unico chunk, letto dal disco in streaming
     const up = await fetch(data.upload_url, {
       method: "PUT",
       headers: {
         "Content-Type": video.mime,
-        "Content-Length": String(buf.length),
-        "Content-Range": `bytes 0-${buf.length - 1}/${buf.length}`,
+        "Content-Length": String(video.size),
+        "Content-Range": `bytes 0-${video.size - 1}/${video.size}`,
       },
-      body: new Uint8Array(buf),
+      ...fileBody(video.path),
     });
     if (!up.ok) {
       throw new Error(`TikTok: upload video fallito (HTTP ${up.status})`);

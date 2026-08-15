@@ -3,10 +3,10 @@
  * Richiede un progetto Google Cloud con la YouTube Data API abilitata.
  * Il refresh token viene ottenuto con access_type=offline&prompt=consent.
  */
-import fs from "node:fs";
 import type { Account } from "@/types";
 import { apiFetch, type PublishInput, type PublishResult, type SocialModule, type TokenSet } from "../types";
 import { refreshWithToken } from "../oauth";
+import { fileBody } from "../upload";
 
 export const youtubeModule: SocialModule = {
   platform: "youtube",
@@ -19,6 +19,7 @@ export const youtubeModule: SocialModule = {
     mediaTypes: ["video"],
     maxMedia: 1,
     mimeTypes: ["video/mp4", "video/quicktime", "video/webm"],
+    postTypes: ["video", "short"],
   },
   oauth: {
     authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
@@ -49,10 +50,16 @@ export const youtubeModule: SocialModule = {
     const video = input.media.find((m) => m.kind === "video");
     if (!video) throw new Error("YouTube richiede un video.");
 
+    // Non esiste un flag "Short" nell'API: YouTube classifica come Short i video
+    // verticali sotto il minuto. L'hashtag #Shorts nella descrizione è il
+    // segnale ufficiale suggerito da Google per rafforzare la classificazione.
+    const isShort = input.postType === "short";
+    const description = isShort && !/#shorts/i.test(input.body) ? `${input.body}\n\n#Shorts` : input.body;
+
     const metadata = {
       snippet: {
         title: input.title || input.body.slice(0, 90) || "Video",
-        description: input.body,
+        description,
         categoryId: "22", // People & Blogs
       },
       status: { privacyStatus: "public", selfDeclaredMadeForKids: false },
@@ -78,12 +85,11 @@ export const youtubeModule: SocialModule = {
     const uploadUrl = init.headers.get("location");
     if (!uploadUrl) throw new Error("YouTube: URL di upload mancante.");
 
-    // 2) carica i byte del video
-    const buf = await fs.promises.readFile(video.path);
+    // 2) carica i byte del video, letti dal disco in streaming
     const up = await fetch(uploadUrl, {
       method: "PUT",
-      headers: { "Content-Type": video.mime, "Content-Length": String(buf.length) },
-      body: new Uint8Array(buf),
+      headers: { "Content-Type": video.mime, "Content-Length": String(video.size) },
+      ...fileBody(video.path),
     });
     if (!up.ok) {
       throw new Error(`YouTube: upload fallito — ${(await up.text()).slice(0, 300)}`);

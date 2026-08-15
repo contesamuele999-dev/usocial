@@ -48,6 +48,16 @@
 - [ ] Reset password via email + ruolo amministratore (gestione utenti)
 - [ ] Più account social della stessa piattaforma per utente (es. 2 pagine Facebook)
 
+## 📊 Fase 4 — Statistiche, commenti e risposte automatiche
+
+Specifica dettagliata (vincoli reali delle API già verificati, fasi e criteri di "fatto"):
+**[docs/SPEC-insights-engagement.md](docs/SPEC-insights-engagement.md)**.
+
+- [ ] Raccolta metriche per post pubblicato (`fetchMetrics` nel modulo + tabella `post_metrics`)
+- [ ] Inbox commenti unificata con risposta inline
+- [ ] Orari migliori calcolati dallo storico, mostrati dentro al calendario
+- [ ] Regole di risposta automatica (modalità bozza come predefinita)
+
 ## 💡 Idee future
 - [ ] Nuove piattaforme: Threads, X/Twitter, Mastodon, Bluesky, Pinterest (basta un modulo)
 - [ ] Generazione immagini AI per i post

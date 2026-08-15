@@ -21,6 +21,13 @@ services:
       - ./data:/app/data # database SQLite + media, persistenti sull'host
     expose:
       - "3000" # visibile solo agli altri container, non a internet
+    networks:
+      # IP fisso: Caddy ci punta direttamente, senza passare dal DNS interno di
+      # Docker. Quando la VM va in swap il resolver di dockerd può non
+      # rispondere ("lookup usocial: i/o timeout") e il sito restituisce 502
+      # pur essendo l'app perfettamente viva.
+      usocial_net:
+        ipv4_address: 172.28.0.10
     restart: unless-stopped
 
   caddy:
@@ -37,7 +44,15 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data # certificati TLS (persistenti)
       - caddy_config:/config
+    networks:
+      - usocial_net
     restart: unless-stopped
+
+networks:
+  usocial_net:
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
 
 volumes:
   caddy_data:

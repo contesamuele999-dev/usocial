@@ -10,18 +10,52 @@ import { api, mediaWarnings, uploadMedia, type PlatformInfo } from "@/lib/client
 import { useI18n } from "@/lib/i18n";
 import type { MediaItem } from "@/types";
 
+/**
+ * URL del file. Punta a /files/:nome (non a /api/media/:id/:nome) perché quel
+ * percorso corrisponde a un file reale su disco: in produzione lo serve Caddy
+ * direttamente, senza svegliare Node.
+ */
 export function mediaUrl(m: MediaItem): string {
-  const ext = m.filename.includes(".") ? m.filename.slice(m.filename.lastIndexOf(".")) : "";
-  return `/api/media/${m.id}/file${ext}`;
+  return `/files/${encodeURIComponent(m.filename)}`;
+}
+
+/**
+ * Fotogramma di anteprima di un video: il server lo genera al primo accesso e
+ * poi lo riusa. Prima la griglia montava un <video> per elemento, cioè
+ * scaricava ogni video INTERO solo per mostrarne un fermo immagine.
+ */
+export function posterUrl(m: MediaItem): string {
+  return `/files/${encodeURIComponent(m.filename)}.poster.jpg`;
 }
 
 export function MediaThumb({ item, className = "" }: { item: MediaItem; className?: string }) {
-  if (item.mime.startsWith("video/")) {
-    return <video src={mediaUrl(item)} className={`object-cover ${className}`} muted />;
+  const isVideo = item.mime.startsWith("video/");
+  // Il poster manca se ffmpeg non è disponibile sul server o il video è
+  // illeggibile: in quel caso un riquadro neutro, non un download da 100 MB.
+  const [noPoster, setNoPoster] = useState(false);
+
+  if (isVideo && noPoster) {
+    return (
+      <div className={`flex items-center justify-center bg-gray-100 text-2xl dark:bg-gray-800 ${className}`}>
+        🎬
+      </div>
+    );
   }
-  // eslint-disable-next-line @next/next/no-img-element
-  return <img src={mediaUrl(item)} alt={item.originalName} className={`object-cover ${className}`} />;
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={isVideo ? posterUrl(item) : mediaUrl(item)}
+      alt={item.originalName}
+      loading="lazy"
+      decoding="async"
+      onError={isVideo ? () => setNoPoster(true) : undefined}
+      className={`object-cover ${className}`}
+    />
+  );
 }
+
+/** Media caricati per volta nel selettore (la griglia è alta poche righe). */
+const PICKER_PAGE_SIZE = 40;
 
 export function MediaPicker({
   selected,
@@ -35,15 +69,24 @@ export function MediaPicker({
 }) {
   const { t } = useI18n();
   const [items, setItems] = useState<MediaItem[]>([]);
+  /** Totale in libreria: gli `items` sono solo le pagine già caricate. */
+  const [total, setTotal] = useState(0);
   /** null = nessun upload in corso; altrimenti stato della barra. */
   const [progress, setProgress] = useState<{ name: string; percent: number; index: number; total: number } | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const load = () => api<{ items: MediaItem[] }>("/api/media").then((r) => setItems(r.items));
+  const load = async (offset = 0) => {
+    const r = await api<{ items: MediaItem[]; total: number }>(
+      `/api/media?limit=${PICKER_PAGE_SIZE}&offset=${offset}`
+    );
+    setItems((prev) => (offset === 0 ? r.items : [...prev, ...r.items]));
+    setTotal(r.total);
+  };
   useEffect(() => {
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const toggle = (id: number) => {
@@ -65,7 +108,7 @@ export function MediaPicker({
         added.push(item.id);
       }
       onChange([...selected, ...added]);
-      await load();
+      await load(0);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -179,6 +222,16 @@ export function MediaPicker({
             );
           })}
         </div>
+      )}
+
+      {items.length < total && (
+        <button
+          type="button"
+          className="btn-secondary mt-2 w-full py-1 text-xs"
+          onClick={() => load(items.length)}
+        >
+          {t("mediaPicker.loadMore", { shown: items.length, total })}
+        </button>
       )}
     </div>
   );

@@ -201,6 +201,16 @@ function UserBox() {
   );
 }
 
+/** Rotellina di attesa mostrata sul link appena cliccato. */
+function NavSpinner() {
+  return (
+    <span
+      aria-hidden
+      className="ml-auto h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent"
+    />
+  );
+}
+
 export function Shell({
   children,
   hasSession = false,
@@ -210,6 +220,16 @@ export function Shell({
 }) {
   const pathname = usePathname();
   const { t } = useI18n();
+
+  /**
+   * Destinazione del clic in corso. Le pagine sono tutte client-side e caricano
+   * i dati dopo il mount: senza questo segnale un clic non produce alcun
+   * riscontro visibile finché la risposta non arriva, e sembra ignorato.
+   * Si azzera da sé quando il percorso cambia davvero.
+   */
+  const [navTo, setNavTo] = useState<string | null>(null);
+  useEffect(() => setNavTo(null), [pathname]);
+  const isNavigating = (href: string) => navTo === href && pathname !== href;
 
   // Pagine di autenticazione: nessuna sidebar, solo il contenuto centrato.
   // La home "/" senza sessione mostra la landing pubblica, anch'essa senza sidebar.
@@ -226,14 +246,20 @@ export function Shell({
             u<span className="text-brand-600">Social</span>
           </span>
         </Link>
-        <Link href="/posts/new" className="btn-primary md:mb-4">
+        <Link
+          href="/posts/new"
+          className="btn-primary md:mb-4"
+          onClick={() => setNavTo("/posts/new")}
+        >
           ✍️ <span className="hidden sm:inline">{t("shell.newPost")}</span>
+          {isNavigating("/posts/new") && <NavSpinner />}
         </Link>
         <nav className="flex flex-1 flex-row gap-1 overflow-x-auto md:flex-col">
           {NAV.map((item) => (
             <Link
               key={item.href}
               href={item.href}
+              onClick={() => setNavTo(item.href)}
               className={`flex items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition ${
                 pathname === item.href
                   ? "bg-brand-50 text-brand-700 dark:bg-brand-700/20 dark:text-brand-100"
@@ -242,6 +268,7 @@ export function Shell({
             >
               <span>{item.icon}</span>
               <span className="hidden sm:inline">{t(item.key)}</span>
+              {isNavigating(item.href) && <NavSpinner />}
             </Link>
           ))}
         </nav>

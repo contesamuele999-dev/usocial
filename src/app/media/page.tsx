@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, fmtDate, uploadMedia } from "@/lib/client";
 import { useI18n, type TFunc } from "@/lib/i18n";
 import type { MediaItem, MediaUsage } from "@/types";
-import { MediaThumb, mediaUrl } from "@/components/MediaPicker";
+import { MediaThumb, mediaUrl, posterUrl } from "@/components/MediaPicker";
 
 interface Quota {
   used: number;
@@ -64,9 +64,29 @@ function StoragePanel({ quota }: { quota: Quota | null }) {
   );
 }
 
+/** Quanti media caricare per volta (deve stare sotto il MAX_LIMIT dell'API). */
+const PAGE_SIZE = 60;
+
+/** Risposta di GET /api/media (una pagina di risultati + il totale). */
+interface MediaListResponse {
+  items: MediaItem[];
+  total: number;
+  folders: string[];
+  pending: Record<number, MediaUsage[]>;
+}
+
 export default function MediaPage() {
   const { t } = useI18n();
   const [items, setItems] = useState<MediaItem[]>([]);
+  /** Totale a database che soddisfa il filtro (gli `items` sono solo la parte caricata). */
+  const [total, setTotal] = useState(0);
+  /**
+   * Vero finché la prima pagina non è arrivata. Senza, durante il caricamento
+   * la griglia vuota mostrava "Nessun media": un messaggio falso, che faceva
+   * sembrare persa una libreria che stava solo arrivando.
+   */
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [folders, setFolders] = useState<string[]>([]);
   const [quota, setQuota] = useState<Quota | null>(null);
   const [q, setQ] = useState("");
@@ -80,14 +100,28 @@ export default function MediaPage() {
   const [dragOver, setDragOver] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const fetchPage = useCallback(
+    (offset: number) => {
+      const params = new URLSearchParams();
+      if (q) params.set("q", q);
+      if (folder) params.set("folder", folder);
+      params.set("limit", String(PAGE_SIZE));
+      params.set("offset", String(offset));
+      return api<MediaListResponse>(`/api/media?${params}`);
+    },
+    [q, folder]
+  );
+
   const load = useCallback(async () => {
-    const params = new URLSearchParams();
-    if (q) params.set("q", q);
-    if (folder) params.set("folder", folder);
-    const r = await api<{ items: MediaItem[]; folders: string[]; pending: Record<number, MediaUsage[]> }>(
-      `/api/media?${params}`
-    );
+    setLoading(true);
+    let r: MediaListResponse;
+    try {
+      r = await fetchPage(0);
+    } finally {
+      setLoading(false);
+    }
     setItems(r.items);
+    setTotal(r.total);
     setFolders(r.folders);
     setPending(r.pending || {});
     // la quota si aggiorna insieme alla lista (dopo upload/eliminazioni)
@@ -96,7 +130,19 @@ export default function MediaPage() {
     } catch {
       /* la barra è informativa: un errore qui non deve bloccare la libreria */
     }
-  }, [q, folder]);
+  }, [fetchPage]);
+
+  /** Aggiunge la pagina successiva in coda a quelle già mostrate. */
+  const loadMore = async () => {
+    setLoadingMore(true);
+    try {
+      const r = await fetchPage(items.length);
+      setItems((prev) => [...prev, ...r.items]);
+      setTotal(r.total);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   useEffect(() => {
     const t = setTimeout(load, 250); // debounce ricerca
@@ -236,7 +282,9 @@ export default function MediaPage() {
           upload(e.dataTransfer.files);
         }}
       >
-        {visible.length === 0 ? (
+        {loading ? (
+          <p className="py-16 text-center text-sm text-gray-500">{t("common.loading")}</p>
+        ) : visible.length === 0 ? (
           <p className="py-16 text-center text-sm text-gray-500">{t("media.empty")}</p>
         ) : (
           <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6">
@@ -263,6 +311,18 @@ export default function MediaPage() {
             ))}
           </div>
         )}
+
+        {/* La libreria è paginata: il resto arriva su richiesta, non tutto insieme. */}
+        {items.length < total && (
+          <div className="mt-4 flex flex-col items-center gap-1">
+            <button className="btn-secondary" onClick={loadMore} disabled={loadingMore}>
+              {loadingMore ? t("media.loadingMore") : t("media.loadMore")}
+            </button>
+            <span className="text-xs text-gray-400">
+              {t("media.shownCount", { shown: items.length, total })}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Modal anteprima/dettaglio */}
@@ -279,7 +339,16 @@ export default function MediaPage() {
               </button>
             </div>
             {preview.mime.startsWith("video/") ? (
-              <video src={mediaUrl(preview)} controls className="mb-3 max-h-80 w-full rounded-lg" />
+              // `preload="none"`: senza, aprire l'anteprima scaricava subito il video
+              // intero. Con il poster si vede il fermo immagine e i byte partono solo
+              // se l'utente preme play.
+              <video
+                src={mediaUrl(preview)}
+                poster={posterUrl(preview)}
+                preload="none"
+                controls
+                className="mb-3 max-h-80 w-full rounded-lg"
+              />
             ) : (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={mediaUrl(preview)} alt="" className="mb-3 max-h-80 w-full rounded-lg object-contain" />

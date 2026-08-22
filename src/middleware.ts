@@ -48,5 +48,8 @@ export const config = {
   //   /apple-icon.png in public/): senza questa esclusione il middleware li
   //   redirigerebbe a /login per gli utenti non autenticati, impedendo a
   //   next/image di caricare l'icona nelle pagine pubbliche.
-  matcher: ["/((?!api|_next/static|_next/image|.*\\.[\\w]+$).*)"],
+  // - /files: media indirizzati per nome su disco. Sono pubblici come /api/media
+  //   (le piattaforme social li scaricano senza cookie) e un nome privo di
+  //   estensione finirebbe altrimenti redirezionato al login.
+  matcher: ["/((?!api|files|_next/static|_next/image|.*\\.[\\w]+$).*)"],
 };

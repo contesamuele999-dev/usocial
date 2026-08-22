@@ -287,11 +287,20 @@ Poi assicurati che siano vere entrambe queste cose:
 
 1. **La swap è attiva** (passo 4 di questa guida): `free -m` deve mostrare una riga `Swap`
    diversa da zero.
-2. **Il codice è aggiornato**: le versioni recenti caricano e pubblicano i video in
-   streaming, senza tenerli in RAM. Aggiorna con:
+2. **Il codice è aggiornato**: le versioni recenti caricano, pubblicano **e servono**
+   i video in streaming, senza tenerli in RAM. Aggiorna con:
 
 ```bash
 cd ~/usocial && git pull && docker compose -f docker-compose.prod.yml up -d --build
+```
+
+3. **Caddy serve i media da sé**: il `docker-compose.prod.yml` monta `./data/media`
+   su `/srv/media` nel container di Caddy, che risponde a `/files/*` senza svegliare
+   Node. È una modifica al compose, quindi il container va **ricreato** (non basta
+   riavviarlo) — il comando `up -d` qui sopra lo fa. Per controllare che funzioni:
+
+```bash
+docker compose -f docker-compose.prod.yml exec caddy ls /srv/media
 ```
 
 ---

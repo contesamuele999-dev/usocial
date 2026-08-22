@@ -26,16 +26,27 @@ const ALLOWED = [
   "video/webm", // registrazioni in-app (MediaRecorder); conversione a mp4 in fase di montaggio
 ];
 
+/** Elementi per pagina se il client non chiede diversamente. */
+const DEFAULT_LIMIT = 60;
+const MAX_LIMIT = 200;
+
 export const GET = withUser("media", async (req, _ctx, user) => {
   const url = new URL(req.url);
-  const items = listMedia(user.id, {
+  // La lista è paginata: senza limite la Libreria restituiva l'intero archivio
+  // e il browser apriva una richiesta per ogni file presente.
+  const limit = Math.min(MAX_LIMIT, Math.max(1, Number(url.searchParams.get("limit")) || DEFAULT_LIMIT));
+  const offset = Math.max(0, Number(url.searchParams.get("offset")) || 0);
+  const { items, total } = listMedia(user.id, {
     q: url.searchParams.get("q") || undefined,
     folder: url.searchParams.get("folder") || undefined,
+    limit,
+    offset,
   });
   // `pending` dice, per ogni media, quali post in coda lo useranno: la Libreria
   // segnala così cosa è in attesa di pubblicazione e cosa si può cancellare.
   return NextResponse.json({
     items,
+    total,
     folders: listFolders(user.id),
     pending: mediaPendingUsage(user.id),
   });

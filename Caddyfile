@@ -3,13 +3,35 @@
 # al container caddy nel docker-compose.prod.yml).
 # Caddy ottiene e rinnova da solo il certificato TLS: nessuna configurazione manuale.
 {$APP_DOMAIN} {
-	# IP fisso invece del nome `usocial`: il DNS interno di Docker, sotto
-	# pressione di memoria, andava in timeout e il sito rispondeva 502 pur
-	# essendo l'app viva (vedi docker-compose.prod.yml).
-	reverse_proxy 172.28.0.10:3000 {
-		# Durante un riavvio del container la connessione viene rifiutata per
-		# qualche secondo: riprova invece di restituire subito 502.
-		lb_try_duration 10s
-		lb_try_interval 500ms
+	# --- Media: serviti da Caddy, non da Node ---------------------------------
+	# /files/:nome corrisponde a un file reale in data/media (montato in sola
+	# lettura su /srv/media). Farli passare da Node significava tenere l'intero
+	# video in RAM: su una VM da 1 GB bastava aprire la Libreria per mandarla in
+	# swap e far sembrare l'app bloccata. Caddy li invia con sendfile, supporta
+	# le richieste Range e non tocca il processo dell'app.
+	handle /files/* {
+		root * /srv/media
+		uri strip_prefix /files
+		# `pass_thru`: se il file non esiste ancora (tipicamente il poster di un
+		# video, generato su richiesta) la richiesta prosegue verso l'app.
+		file_server {
+			pass_thru
+		}
+		reverse_proxy 172.28.0.10:3000 {
+			lb_try_duration 10s
+			lb_try_interval 500ms
+		}
+	}
+
+	handle {
+		# IP fisso invece del nome `usocial`: il DNS interno di Docker, sotto
+		# pressione di memoria, andava in timeout e il sito rispondeva 502 pur
+		# essendo l'app viva (vedi docker-compose.prod.yml).
+		reverse_proxy 172.28.0.10:3000 {
+			# Durante un riavvio del container la connessione viene rifiutata per
+			# qualche secondo: riprova invece di restituire subito 502.
+			lb_try_duration 10s
+			lb_try_interval 500ms
+		}
 	}
 }

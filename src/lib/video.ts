@@ -240,3 +240,44 @@ export function convertToMp4(input: string, output: string, opts: ConvertOptions
     });
   });
 }
+
+/** Esegue ffmpeg con gli argomenti dati; risolve true se esce con codice 0. */
+function runFfmpeg(bin: string, args: string[]): Promise<boolean> {
+  return new Promise((resolve) => {
+    const proc = spawn(bin, args);
+    proc.stderr.on("data", () => {
+      /* scartato: qui interessa solo se il fotogramma è stato prodotto */
+    });
+    proc.on("error", () => resolve(false));
+    proc.on("close", (code) => resolve(code === 0));
+  });
+}
+
+/**
+ * Estrae un fotogramma di anteprima (JPEG ridotto) da un video.
+ *
+ * Serve alla Libreria: senza poster la griglia usava <video src=…> per ogni
+ * elemento, cioè scaricava ogni video per intero solo per mostrare un'immagine
+ * ferma. Il poster pesa qualche decina di KB ed è generato una volta sola.
+ *
+ * `-ss` prima di `-i` fa il seek rapido sui keyframe: su un video lungo evita di
+ * decodificare dall'inizio, cosa che sulla VM costerebbe secondi di CPU.
+ */
+export async function extractPoster(input: string, output: string, atSeconds = 1): Promise<boolean> {
+  const bin = ffmpegPath();
+  if (!bin) return false;
+  const args = (ss: number) => [
+    "-ss", String(ss),
+    "-i", input,
+    "-frames:v", "1",
+    // non ingrandisce i video più stretti di 480px
+    "-vf", "scale='min(480,iw)':-2",
+    "-q:v", "6",
+    "-y", output,
+  ];
+  const ok = await runFfmpeg(bin, args(atSeconds));
+  if (ok && isRunnable(output)) return true;
+  // Video più corto del punto di seek: riprova dal primo fotogramma.
+  const retry = await runFfmpeg(bin, args(0));
+  return retry && isRunnable(output);
+}

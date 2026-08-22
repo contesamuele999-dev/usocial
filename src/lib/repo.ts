@@ -412,8 +412,17 @@ export function recoverInterruptedTargets(now: Date): number[] {
 
 // ---------- MEDIA ----------
 
-export function listMedia(userId: number, filter?: { q?: string; folder?: string }): MediaItem[] {
-  let sql = "SELECT * FROM media WHERE user_id = ?";
+export interface MediaFilter {
+  q?: string;
+  folder?: string;
+  /** Quanti elementi restituire. Assente = tutti (usato solo da script/export). */
+  limit?: number;
+  offset?: number;
+}
+
+/** Clausola WHERE condivisa fra il conteggio e la pagina di risultati. */
+function mediaWhere(userId: number, filter?: MediaFilter): { sql: string; params: unknown[] } {
+  let sql = " FROM media WHERE user_id = ?";
   const params: unknown[] = [userId];
   if (filter?.q) {
     sql += " AND (original_name LIKE ? OR tags LIKE ?)";
@@ -423,8 +432,33 @@ export function listMedia(userId: number, filter?: { q?: string; folder?: string
     sql += " AND folder = ?";
     params.push(filter.folder);
   }
-  sql += " ORDER BY created_at DESC";
-  return (getDb().prepare(sql).all(...params) as Record<string, unknown>[]).map(rowToMedia);
+  return { sql, params };
+}
+
+/**
+ * Pagina di media + totale che soddisfa il filtro.
+ *
+ * La paginazione non è cosmetica: prima la Libreria restituiva TUTTI gli
+ * elementi e la griglia ne montava uno per ciascuno, quindi una richiesta HTTP
+ * per file. Con `limit` il browser apre poche connessioni per volta.
+ */
+export function listMedia(
+  userId: number,
+  filter?: MediaFilter
+): { items: MediaItem[]; total: number } {
+  const { sql, params } = mediaWhere(userId, filter);
+  const total = (
+    getDb().prepare(`SELECT COUNT(*) AS n${sql}`).get(...params) as { n: number }
+  ).n;
+
+  let query = `SELECT *${sql} ORDER BY created_at DESC`;
+  const queryParams = [...params];
+  if (filter?.limit && filter.limit > 0) {
+    query += " LIMIT ? OFFSET ?";
+    queryParams.push(filter.limit, Math.max(0, filter.offset || 0));
+  }
+  const items = (getDb().prepare(query).all(...queryParams) as Record<string, unknown>[]).map(rowToMedia);
+  return { items, total };
 }
 
 /**

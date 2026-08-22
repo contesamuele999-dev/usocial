@@ -77,15 +77,28 @@ export async function ensureMediaDir(): Promise<void> {
   await fs.promises.mkdir(env.mediaDir, { recursive: true });
 }
 
-export async function readFile(filename: string): Promise<Buffer> {
-  return fs.promises.readFile(filePath(filename));
+/**
+ * Nome del fotogramma di anteprima associato a un video, accanto al file
+ * originale in DATA_DIR/media. Generato su richiesta e riusato: la griglia
+ * della Libreria mostra questo (pochi KB) invece del video intero.
+ */
+export function posterFilename(filename: string): string {
+  return `${path.basename(filename)}.poster.jpg`;
 }
 
+/** Percorso su disco del poster di un video. */
+export function posterPath(filename: string): string {
+  return path.join(env.mediaDir, posterFilename(filename));
+}
+
+/** Elimina il file e, se presente, il poster generato per esso. */
 export async function deleteFile(filename: string): Promise<void> {
-  try {
-    await fs.promises.unlink(filePath(filename));
-  } catch {
-    // già assente: ignora
+  for (const p of [filePath(filename), posterPath(filename)]) {
+    try {
+      await fs.promises.unlink(p);
+    } catch {
+      // già assente: ignora
+    }
   }
 }
 

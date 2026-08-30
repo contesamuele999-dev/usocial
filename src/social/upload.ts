@@ -24,3 +24,26 @@ export function fileBody(path: string): RequestInit {
 export function fileBlob(path: string, type: string): Promise<Blob> {
   return fs.openAsBlob(path, { type });
 }
+
+/**
+ * Come `fileBody`, ma manda solo i byte `[start, end)` del file.
+ * Serve agli upload a chunk (TikTok): ogni fetta è letta dal disco su richiesta.
+ */
+export function fileBodyRange(path: string, start: number, end: number): RequestInit {
+  return {
+    // `end` di createReadStream è inclusivo, qui l'intervallo è esclusivo.
+    body: Readable.toWeb(fs.createReadStream(path, { start, end: end - 1 })) as unknown as BodyInit,
+    duplex: "half",
+  } as RequestInit;
+}
+
+/** Fetta `[start, end)` del file come Blob (per i multipart a chunk di Facebook). */
+export async function fileBlobRange(
+  path: string,
+  type: string,
+  start: number,
+  end: number
+): Promise<Blob> {
+  const blob = await fs.openAsBlob(path, { type });
+  return blob.slice(start, end, type);
+}

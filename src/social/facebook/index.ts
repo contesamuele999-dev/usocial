@@ -5,23 +5,30 @@
  * il suo page access token in `meta`.
  */
 import type { Account } from "@/types";
-import { apiFetch, type PublishInput, type PublishResult, type SocialModule, type TokenSet } from "../types";
+import {
+  apiFetch,
+  type PublishInput,
+  type PublishMedia,
+  type PublishResult,
+  type SocialModule,
+  type TokenSet,
+} from "../types";
 import { env } from "@/lib/env";
-import { fileBlob } from "../upload";
+import { fileBlob, fileBlobRange } from "../upload";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 
 async function uploadMultipart(
   url: string,
   fields: Record<string, string>,
-  file?: { path: string; mime: string; name: string; field: string }
+  file?: { blob: Blob; name: string; field: string }
 ): Promise<Record<string, unknown>> {
   const form = new FormData();
   for (const [k, v] of Object.entries(fields)) form.append(k, v);
   if (file) {
     // Blob agganciato al file: i byte restano su disco (un reel da 114 MB in
     // RAM faceva finire il processo in OOM).
-    form.append(file.field, await fileBlob(file.path, file.mime), file.name);
+    form.append(file.field, file.blob, file.name);
   }
   const res = await fetch(url, { method: "POST", body: form });
   const json = (await res.json()) as Record<string, unknown>;
@@ -30,6 +37,77 @@ async function uploadMultipart(
     throw new Error(`Facebook: ${msg}`);
   }
   return json;
+}
+
+/**
+ * Video: upload resumable a fasi (start → transfer → finish).
+ *
+ * Perché: il POST multipart in un colpo solo su `/{page}/videos` non regge i
+ * file grandi (timeout / errore lato Meta) e ogni retry ricaricava il video da
+ * zero. Qui le fette sono decise dal server tramite `start_offset`/`end_offset`.
+ */
+async function publishVideo(
+  pageId: string,
+  pageToken: string,
+  video: PublishMedia,
+  message: string
+): Promise<PublishResult> {
+  const url = `${GRAPH}/${pageId}/videos`;
+
+  const start = await apiFetch(url, {
+    method: "POST",
+    body: new URLSearchParams({
+      upload_phase: "start",
+      file_size: String(video.size),
+      access_token: pageToken,
+    }),
+  });
+  const sessionId = start.upload_session_id as string;
+  const videoId = start.video_id as string;
+  if (!sessionId || !videoId) {
+    throw new Error(`Facebook: avvio upload video fallito — ${JSON.stringify(start).slice(0, 300)}`);
+  }
+
+  let offset = Number(start.start_offset);
+  let endOffset = Number(start.end_offset);
+  while (offset < endOffset) {
+    const json = await uploadMultipart(
+      url,
+      {
+        upload_phase: "transfer",
+        upload_session_id: sessionId,
+        start_offset: String(offset),
+        access_token: pageToken,
+      },
+      {
+        blob: await fileBlobRange(video.path, video.mime, offset, endOffset),
+        name: "chunk.mp4",
+        field: "video_file_chunk",
+      }
+    );
+    const next = Number(json.start_offset);
+    // Senza questo controllo un server che non avanza manderebbe il ciclo
+    // all'infinito, tenendo occupato lo scheduler.
+    if (!Number.isFinite(next) || next <= offset) {
+      throw new Error(`Facebook: upload video bloccato all'offset ${offset}.`);
+    }
+    offset = next;
+    endOffset = Number(json.end_offset);
+  }
+
+  const finish = await apiFetch(url, {
+    method: "POST",
+    body: new URLSearchParams({
+      upload_phase: "finish",
+      upload_session_id: sessionId,
+      description: message,
+      access_token: pageToken,
+    }),
+  });
+  if (finish.success === false) {
+    throw new Error(`Facebook: pubblicazione video non confermata — ${JSON.stringify(finish).slice(0, 300)}`);
+  }
+  return { externalId: videoId, externalUrl: `https://www.facebook.com/${videoId}` };
 }
 
 function pageAuth(account: Account): { pageId: string; pageToken: string } {
@@ -90,16 +168,8 @@ export const facebookModule: SocialModule = {
     const images = input.media.filter((m) => m.kind === "image");
     const videos = input.media.filter((m) => m.kind === "video");
 
-    // Video: upload diretto multipart
-    if (videos.length > 0) {
-      const v = videos[0];
-      const json = await uploadMultipart(
-        `${GRAPH}/${pageId}/videos`,
-        { description: message, access_token: pageToken },
-        { path: v.path, mime: v.mime, name: "video.mp4", field: "source" }
-      );
-      return { externalId: json.id as string, externalUrl: `https://www.facebook.com/${json.id}` };
-    }
+    // Video: upload resumable a chunk
+    if (videos.length > 0) return publishVideo(pageId, pageToken, videos[0], message);
 
     // Una o più immagini: upload non pubblicato + post con attached_media
     if (images.length > 0) {
@@ -108,7 +178,7 @@ export const facebookModule: SocialModule = {
         const json = await uploadMultipart(
           `${GRAPH}/${pageId}/photos`,
           { published: "false", access_token: pageToken },
-          { path: img.path, mime: img.mime, name: "photo.jpg", field: "source" }
+          { blob: await fileBlob(img.path, img.mime), name: "photo.jpg", field: "source" }
         );
         mediaIds.push(json.id as string);
       }

@@ -6,9 +6,35 @@
 import type { Account } from "@/types";
 import { apiFetch, type PublishInput, type PublishResult, type SocialModule, type TokenSet } from "../types";
 import { refreshWithToken } from "../oauth";
-import { fileBody } from "../upload";
+import { fileBodyRange } from "../upload";
 
 const API = "https://open.tiktokapis.com/v2";
+
+/** Vincoli di chunking della Content Posting API. */
+const MAX_CHUNK = 64 * 1024 * 1024;
+
+/**
+ * Divide il video secondo le regole di TikTok: fino a 64 MB si manda in un
+ * pezzo solo; sopra, si usano chunk da 64 MB e l'ULTIMO assorbe il resto della
+ * divisione: TikTok pretende `total_chunk_count = floor(size / chunk_size)`,
+ * quindi l'ultimo chunk può superare i 64 MB — resta comunque sotto i 128 MB
+ * ammessi, perché il resto della divisione per 64 MB è a sua volta < 64 MB.
+ *
+ * Perché: prima si mandava sempre `total_chunk_count: 1` con `chunk_size` pari
+ * all'intero file — sopra i 64 MB l'init rispondeva `invalid_params` e i retry
+ * ripetevano lo stesso errore fino a esaurirli.
+ */
+export function chunkPlan(size: number): { chunkSize: number; ranges: [number, number][] } {
+  if (size <= MAX_CHUNK) return { chunkSize: size, ranges: [[0, size]] };
+  const chunkSize = MAX_CHUNK;
+  const total = Math.floor(size / chunkSize);
+  const ranges: [number, number][] = [];
+  for (let i = 0; i < total; i++) {
+    const start = i * chunkSize;
+    ranges.push([start, i === total - 1 ? size : start + chunkSize]);
+  }
+  return { chunkSize, ranges };
+}
 
 export const tiktokModule: SocialModule = {
   platform: "tiktok",
@@ -50,6 +76,7 @@ export const tiktokModule: SocialModule = {
   async publish(input: PublishInput, account: Account): Promise<PublishResult> {
     const video = input.media.find((m) => m.kind === "video");
     if (!video) throw new Error("TikTok richiede un video.");
+    const { chunkSize, ranges } = chunkPlan(video.size);
 
     // 1) inizializza il direct post con upload da file
     const init = await apiFetch(`${API}/post/publish/video/init/`, {
@@ -66,8 +93,8 @@ export const tiktokModule: SocialModule = {
         source_info: {
           source: "FILE_UPLOAD",
           video_size: video.size,
-          chunk_size: video.size,
-          total_chunk_count: 1,
+          chunk_size: chunkSize,
+          total_chunk_count: ranges.length,
         },
       }),
     });
@@ -76,18 +103,23 @@ export const tiktokModule: SocialModule = {
       throw new Error(`TikTok: init pubblicazione fallito — ${JSON.stringify(init).slice(0, 300)}`);
     }
 
-    // 2) upload del video in un unico chunk, letto dal disco in streaming
-    const up = await fetch(data.upload_url, {
-      method: "PUT",
-      headers: {
-        "Content-Type": video.mime,
-        "Content-Length": String(video.size),
-        "Content-Range": `bytes 0-${video.size - 1}/${video.size}`,
-      },
-      ...fileBody(video.path),
-    });
-    if (!up.ok) {
-      throw new Error(`TikTok: upload video fallito (HTTP ${up.status})`);
+    // 2) upload dei chunk in sequenza, letti dal disco in streaming
+    for (const [i, [start, end]] of ranges.entries()) {
+      const up = await fetch(data.upload_url, {
+        method: "PUT",
+        headers: {
+          "Content-Type": video.mime,
+          "Content-Length": String(end - start),
+          "Content-Range": `bytes ${start}-${end - 1}/${video.size}`,
+        },
+        ...fileBodyRange(video.path, start, end),
+      });
+      if (!up.ok) {
+        const detail = (await up.text().catch(() => "")).slice(0, 300);
+        throw new Error(
+          `TikTok: upload chunk ${i + 1}/${ranges.length} fallito (HTTP ${up.status})${detail ? ` — ${detail}` : ""}`
+        );
+      }
     }
 
     return { externalId: data.publish_id, externalUrl: undefined };

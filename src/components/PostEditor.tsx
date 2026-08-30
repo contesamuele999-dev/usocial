@@ -341,10 +341,13 @@ export function PostEditor({ initial }: { initial: Post | null }) {
                       )}
                     </div>
                     {retry && <span className="text-xs text-amber-600">⏳ {retry}</span>}
-                    {tgt.status === "failed" && !tgt.nextRetryAt && tgt.error && (
-                      <span className="text-xs text-red-500" title={tgt.error}>
-                        {t("editor.retriesExhausted")}
-                      </span>
+                    {tgt.status === "failed" && !tgt.nextRetryAt && (
+                      <span className="text-xs text-red-500">{t("editor.retriesExhausted")}</span>
+                    )}
+                    {/* Il motivo del fallimento va mostrato, non nascosto in un tooltip:
+                        senza non si capisce se riprovare o cambiare il contenuto. */}
+                    {tgt.status === "failed" && tgt.error && (
+                      <span className="break-words text-xs text-red-500">⚠️ {tgt.error}</span>
                     )}
                   </li>
                 );

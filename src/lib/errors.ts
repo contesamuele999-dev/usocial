@@ -47,3 +47,36 @@ export function withErrorHandling<Ctx>(scope: string, handler: Handler<Ctx>): Ha
     }
   };
 }
+
+/**
+ * Messaggio leggibile da un errore, srotolando la catena di `cause`.
+ *
+ * Perché: `fetch()` di Node fallisce SEMPRE con "fetch failed" e mette la causa
+ * reale in `cause` (ENOTFOUND, ECONNRESET, UND_ERR_HEADERS_TIMEOUT, ENOENT…).
+ * Senza srotolarla, negli esiti di pubblicazione resta un messaggio che non
+ * dice nulla e non si capisce se sia rete, file mancante o timeout.
+ */
+export function errorMessage(err: unknown): string {
+  if (!(err instanceof Error)) return String(err);
+  const parts: string[] = [];
+  const seen = new Set<Error>();
+  let cur: unknown = err;
+  while (cur instanceof Error && !seen.has(cur)) {
+    seen.add(cur);
+    const e = cur as Error & {
+      code?: string;
+      syscall?: string;
+      hostname?: string;
+      address?: string;
+      port?: number;
+    };
+    const bits = [e.message];
+    if (e.code && !e.message.includes(e.code)) bits.push(`[${e.code}]`);
+    const host = e.hostname || e.address;
+    if (host) bits.push(`${e.syscall ? `${e.syscall} ` : ""}${host}${e.port ? `:${e.port}` : ""}`);
+    const line = bits.join(" ");
+    if (line && line !== parts[parts.length - 1]) parts.push(line);
+    cur = e.cause;
+  }
+  return parts.join(" ← ");
+}

@@ -6,6 +6,7 @@
  */
 import path from "node:path";
 import { env } from "@/lib/env";
+import { errorMessage } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import {
   deleteMediaSystem,
@@ -116,7 +117,7 @@ async function publishTarget(post: Post, target: PostTarget) {
     });
     logger.info(target.platform, `Post #${post.id} pubblicato (${result.externalId})`, undefined, userId);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = errorMessage(err);
     if (attemptsDone < MAX_ATTEMPTS) {
       const retryAt = new Date(Date.now() + backoffMinutes(attemptsDone) * 60_000);
       updateTarget(target.id, { status: "failed", error: message, nextRetryAt: retryAt.toISOString() });

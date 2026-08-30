@@ -1,7 +1,13 @@
 /**
  * Modulo TikTok — Content Posting API (Direct Post, upload da file).
- * Richiede un'app su developers.tiktok.com con lo scope video.publish approvato.
- * Nota: finché l'app TikTok non è "audited", i post vengono creati come privati.
+ * Richiede un'app su developers.tiktok.com con gli scope video.publish e video.upload.
+ *
+ * Due modalità, scelte con il tipo di post:
+ *  - "video": Direct Post, pubblica subito. Richiede che il Direct Post sia stato
+ *    AUDITATO: senza audit TikTok lo accetta solo su account privati e altrimenti
+ *    risponde 403 unaudited_client_can_only_post_to_private_accounts.
+ *  - "draft": carica il video nelle bozze dell'account, che l'utente completa
+ *    dall'app TikTok. Non richiede audit ed è il ripiego finché non arriva.
  */
 import type { Account } from "@/types";
 import { apiFetch, type PublishInput, type PublishResult, type SocialModule, type TokenSet } from "../types";
@@ -43,7 +49,7 @@ export function chunkPlan(size: number): { chunkSize: number; ranges: [number, n
  */
 const HINTS: Record<string, string> = {
   unaudited_client_can_only_post_to_private_accounts:
-    "l'app TikTok non è ancora auditata, quindi può pubblicare solo su account impostati come PRIVATI. Rendi privato l'account (TikTok → Impostazioni → Privacy → Account privato) oppure invia l'app per l'audit su developers.tiktok.com.",
+    "il Direct Post non è auditato, quindi TikTok accetta la pubblicazione diretta solo su account PRIVATI. Scegli il tipo di post \"Bozza\" per caricare il video nelle bozze TikTok, oppure invia l'app per l'audit su developers.tiktok.com (Content Posting API → Direct Post → Apply).",
   access_token_invalid: "token scaduto o revocato: ricollega l'account TikTok nelle Impostazioni.",
   scope_not_authorized:
     "manca lo scope video.publish: ricollega l'account TikTok accettando tutti i permessi.",
@@ -55,32 +61,19 @@ const HINTS: Record<string, string> = {
 
 async function initUpload(
   account: Account,
-  input: PublishInput,
-  video: { size: number },
-  chunkSize: number,
-  totalChunks: number
+  url: string,
+  body: Record<string, unknown>
 ): Promise<Record<string, unknown>> {
   try {
     // TikTok segnala parte degli errori con HTTP 200 e `error.code` diverso da
     // "ok": apiFetch non li vede, vanno controllati a mano.
-    const json = await apiFetch(`${API}/post/publish/video/init/`, {
+    const json = await apiFetch(url, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${account.accessToken}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        post_info: {
-          title: (input.title || input.body).slice(0, 150),
-          privacy_level: "SELF_ONLY", // diventa PUBLIC_TO_EVERYONE quando l'app è approvata
-        },
-        source_info: {
-          source: "FILE_UPLOAD",
-          video_size: video.size,
-          chunk_size: chunkSize,
-          total_chunk_count: totalChunks,
-        },
-      }),
+      body: JSON.stringify(body),
     });
     const error = json.error as { code?: string; message?: string; log_id?: string } | undefined;
     if (error?.code && error.code !== "ok") {
@@ -89,6 +82,31 @@ async function initUpload(
     return json;
   } catch (err) {
     throw explain(err);
+  }
+}
+
+/** Carica il video a fette sull'upload_url restituito dall'init. */
+async function uploadChunks(
+  uploadUrl: string,
+  video: { path: string; mime: string; size: number },
+  ranges: [number, number][]
+) {
+  for (const [i, [start, end]] of ranges.entries()) {
+    const up = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: {
+        "Content-Type": video.mime,
+        "Content-Length": String(end - start),
+        "Content-Range": `bytes ${start}-${end - 1}/${video.size}`,
+      },
+      ...fileBodyRange(video.path, start, end),
+    });
+    if (!up.ok) {
+      const detail = (await up.text().catch(() => "")).slice(0, 300);
+      throw new Error(
+        `TikTok: upload chunk ${i + 1}/${ranges.length} fallito (HTTP ${up.status})${detail ? ` — ${detail}` : ""}`
+      );
+    }
   }
 }
 
@@ -113,12 +131,14 @@ export const tiktokModule: SocialModule = {
     maxMedia: 1,
     // WebM non è accettato: le registrazioni in-app vanno convertite in MP4.
     mimeTypes: ["video/mp4", "video/quicktime"],
-    postTypes: ["video"],
+    // "draft" carica nell'inbox TikTok invece di pubblicare: è l'unica via
+    // finché l'app non passa l'audit del Direct Post.
+    postTypes: ["video", "draft"],
   },
   oauth: {
     authorizeUrl: "https://www.tiktok.com/v2/auth/authorize/",
     tokenUrl: `${API}/oauth/token/`,
-    scopes: ["user.info.basic", "video.publish"],
+    scopes: ["user.info.basic", "video.publish", "video.upload"],
     clientIdParam: "client_key",
     scopeSeparator: ",",
   },
@@ -142,32 +162,45 @@ export const tiktokModule: SocialModule = {
     const video = input.media.find((m) => m.kind === "video");
     if (!video) throw new Error("TikTok richiede un video.");
     const { chunkSize, ranges } = chunkPlan(video.size);
+    const draft = input.postType === "draft";
 
-    // 1) inizializza il direct post con upload da file
-    const init = await initUpload(account, input, video, chunkSize, ranges.length);
+    // Gli account collegati prima che chiedessimo video.upload non possono
+    // caricare bozze: meglio dirlo subito che farsi rifiutare dall'API.
+    if (draft && account.scopes && !account.scopes.includes("video.upload")) {
+      throw new Error(
+        "TikTok: per la bozza serve il permesso video.upload — ricollega l'account TikTok nelle Impostazioni."
+      );
+    }
+
+    const sourceInfo = {
+      source: "FILE_UPLOAD",
+      video_size: video.size,
+      chunk_size: chunkSize,
+      total_chunk_count: ranges.length,
+    };
+
+    // 1) init. La bozza usa l'endpoint inbox (nessun post_info: titolo e
+    // privacy li sceglie l'utente nell'app TikTok al momento di pubblicare).
+    const init = await initUpload(
+      account,
+      draft ? `${API}/post/publish/inbox/video/init/` : `${API}/post/publish/video/init/`,
+      draft
+        ? { source_info: sourceInfo }
+        : {
+            post_info: {
+              title: (input.title || input.body).slice(0, 150),
+              privacy_level: "SELF_ONLY", // diventa PUBLIC_TO_EVERYONE quando l'app è auditata
+            },
+            source_info: sourceInfo,
+          }
+    );
     const data = init.data as { publish_id?: string; upload_url?: string } | undefined;
     if (!data?.upload_url || !data?.publish_id) {
       throw new Error(`TikTok: init pubblicazione fallito — ${JSON.stringify(init).slice(0, 300)}`);
     }
 
     // 2) upload dei chunk in sequenza, letti dal disco in streaming
-    for (const [i, [start, end]] of ranges.entries()) {
-      const up = await fetch(data.upload_url, {
-        method: "PUT",
-        headers: {
-          "Content-Type": video.mime,
-          "Content-Length": String(end - start),
-          "Content-Range": `bytes ${start}-${end - 1}/${video.size}`,
-        },
-        ...fileBodyRange(video.path, start, end),
-      });
-      if (!up.ok) {
-        const detail = (await up.text().catch(() => "")).slice(0, 300);
-        throw new Error(
-          `TikTok: upload chunk ${i + 1}/${ranges.length} fallito (HTTP ${up.status})${detail ? ` — ${detail}` : ""}`
-        );
-      }
-    }
+    await uploadChunks(data.upload_url, video, ranges);
 
     return { externalId: data.publish_id, externalUrl: undefined };
   },

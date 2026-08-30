@@ -80,7 +80,11 @@ Business/Creator** collegato a quella Pagina.
 ## TikTok (il più lungo da approvare)
 
 1. https://developers.tiktok.com → **Manage apps → Connect an app**.
-2. Aggiungi il prodotto **Login Kit** e **Content Posting API**, scope `video.publish`.
+2. Aggiungi il prodotto **Login Kit** e **Content Posting API**, scope `video.publish` (pubblicazione diretta) e `video.upload` (caricamento in bozza).
+   In Content Posting API il **Direct Post** va anche auditato ("Apply"): senza audit TikTok
+   accetta la pubblicazione diretta solo su account privati, e sugli altri risponde
+   `403 unaudited_client_can_only_post_to_private_accounts`. Nel frattempo si usa il tipo
+   di post "Carica come bozza", che non richiede l'audit.
 3. **Redirect URI**: `{APP_URL}/api/connect/tiktok/callback`
 4. Copia **Client Key** e **Client Secret** → `.env`: `TIKTOK_CLIENT_KEY`,
    `TIKTOK_CLIENT_SECRET`.

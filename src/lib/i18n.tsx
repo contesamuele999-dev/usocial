@@ -562,6 +562,7 @@ const it = {
     video: "▶️ Video",
     short: "📱 Short",
     post: "📝 Post",
+    draft: "📥 Carica come bozza",
   },
   postCard: {
     empty: "(vuoto)",
@@ -1064,6 +1065,7 @@ const en: typeof it = {
     video: "▶️ Video",
     short: "📱 Short",
     post: "📝 Post",
+    draft: "📥 Upload as draft",
   },
   postCard: {
     empty: "(empty)",

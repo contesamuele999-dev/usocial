@@ -36,6 +36,71 @@ export function chunkPlan(size: number): { chunkSize: number; ranges: [number, n
   return { chunkSize, ranges };
 }
 
+/**
+ * Codici di errore TikTok tradotti in istruzioni. Il `message` che arriva
+ * dall'API è sempre lo stesso rimando alle linee guida: senza questa mappa
+ * l'utente legge "Please review our integration guidelines" e non sa che fare.
+ */
+const HINTS: Record<string, string> = {
+  unaudited_client_can_only_post_to_private_accounts:
+    "l'app TikTok non è ancora auditata, quindi può pubblicare solo su account impostati come PRIVATI. Rendi privato l'account (TikTok → Impostazioni → Privacy → Account privato) oppure invia l'app per l'audit su developers.tiktok.com.",
+  access_token_invalid: "token scaduto o revocato: ricollega l'account TikTok nelle Impostazioni.",
+  scope_not_authorized:
+    "manca lo scope video.publish: ricollega l'account TikTok accettando tutti i permessi.",
+  spam_risk_too_many_posts: "troppi post pubblicati di recente: TikTok chiede di attendere.",
+  spam_risk_user_banned_from_posting: "l'account TikTok è temporaneamente bloccato dalla pubblicazione.",
+  reached_active_user_cap: "l'app TikTok ha raggiunto il tetto di utenti attivi giornalieri.",
+  file_format_check_failed: "formato video non accettato da TikTok: converti il file in MP4 (H.264/AAC).",
+};
+
+async function initUpload(
+  account: Account,
+  input: PublishInput,
+  video: { size: number },
+  chunkSize: number,
+  totalChunks: number
+): Promise<Record<string, unknown>> {
+  try {
+    // TikTok segnala parte degli errori con HTTP 200 e `error.code` diverso da
+    // "ok": apiFetch non li vede, vanno controllati a mano.
+    const json = await apiFetch(`${API}/post/publish/video/init/`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${account.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        post_info: {
+          title: (input.title || input.body).slice(0, 150),
+          privacy_level: "SELF_ONLY", // diventa PUBLIC_TO_EVERYONE quando l'app è approvata
+        },
+        source_info: {
+          source: "FILE_UPLOAD",
+          video_size: video.size,
+          chunk_size: chunkSize,
+          total_chunk_count: totalChunks,
+        },
+      }),
+    });
+    const error = json.error as { code?: string; message?: string; log_id?: string } | undefined;
+    if (error?.code && error.code !== "ok") {
+      throw explain(new Error(`TikTok: ${error.message || ""} (${error.code}) log_id ${error.log_id}`));
+    }
+    return json;
+  } catch (err) {
+    throw explain(err);
+  }
+}
+
+/** Sostituisce il messaggio dell'API con l'istruzione corrispondente, se nota. */
+function explain(err: unknown): Error {
+  const message = err instanceof Error ? err.message : String(err);
+  for (const [code, hint] of Object.entries(HINTS)) {
+    if (message.includes(code)) return new Error(`TikTok: ${hint}`);
+  }
+  return err instanceof Error ? err : new Error(message);
+}
+
 export const tiktokModule: SocialModule = {
   platform: "tiktok",
   displayName: "TikTok",
@@ -79,25 +144,7 @@ export const tiktokModule: SocialModule = {
     const { chunkSize, ranges } = chunkPlan(video.size);
 
     // 1) inizializza il direct post con upload da file
-    const init = await apiFetch(`${API}/post/publish/video/init/`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${account.accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        post_info: {
-          title: (input.title || input.body).slice(0, 150),
-          privacy_level: "SELF_ONLY", // diventa PUBLIC_TO_EVERYONE quando l'app è approvata
-        },
-        source_info: {
-          source: "FILE_UPLOAD",
-          video_size: video.size,
-          chunk_size: chunkSize,
-          total_chunk_count: ranges.length,
-        },
-      }),
-    });
+    const init = await initUpload(account, input, video, chunkSize, ranges.length);
     const data = init.data as { publish_id?: string; upload_url?: string } | undefined;
     if (!data?.upload_url || !data?.publish_id) {
       throw new Error(`TikTok: init pubblicazione fallito — ${JSON.stringify(init).slice(0, 300)}`);

@@ -107,12 +107,16 @@ export async function apiFetch(url: string, init?: RequestInit): Promise<Record<
     json = { raw: text };
   }
   if (!res.ok) {
+    const error = json.error as { message?: string; code?: string | number } | undefined;
     const detail =
-      (json.error as { message?: string } | undefined)?.message ||
+      error?.message ||
       (json as { error_description?: string }).error_description ||
       (json as { message?: string }).message ||
       text.slice(0, 500);
-    throw new Error(`HTTP ${res.status}: ${detail}`);
+    // Il codice è la parte diagnostica: TikTok mette in `message` un rimando
+    // generico alle linee guida e la causa vera solo in `error.code`.
+    const code = error?.code !== undefined && error.code !== "ok" ? ` (${error.code})` : "";
+    throw new Error(`HTTP ${res.status}: ${detail}${code}`);
   }
   return json;
 }

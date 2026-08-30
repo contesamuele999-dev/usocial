@@ -35,6 +35,23 @@ export interface Post {
 }
 
 /** Una riga per ogni piattaforma selezionata per il post. */
+/**
+ * Opzioni che la piattaforma impone di far scegliere all'utente prima di
+ * pubblicare. Oggi le usa solo TikTok: le Content Sharing Guidelines
+ * richiedono che privacy, commenti, duetti e stitch siano decisi nella UI
+ * dell'app e non dal codice.
+ */
+export interface TargetOptions {
+  privacyLevel?: string;
+  disableComment?: boolean;
+  disableDuet?: boolean;
+  disableStitch?: boolean;
+  /** Contenuto promozionale: "il tuo brand" (organico). */
+  brandOrganic?: boolean;
+  /** Contenuto promozionale per un terzo (branded content). */
+  brandedContent?: boolean;
+}
+
 export interface PostTarget {
   id: number;
   postId: number;
@@ -48,6 +65,8 @@ export interface PostTarget {
    * dedotto dai media allegati.
    */
   postType: string | null;
+  /** Opzioni scelte dall'utente per questa piattaforma (TikTok: privacy, commenti…). */
+  options: TargetOptions | null;
   status: TargetStatus;
   externalId: string | null;
   externalUrl: string | null;

@@ -10,7 +10,14 @@
  *    dall'app TikTok. Non richiede audit ed è il ripiego finché non arriva.
  */
 import type { Account } from "@/types";
-import { apiFetch, type PublishInput, type PublishResult, type SocialModule, type TokenSet } from "../types";
+import {
+  apiFetch,
+  type CreatorInfo,
+  type PublishInput,
+  type PublishResult,
+  type SocialModule,
+  type TokenSet,
+} from "../types";
 import { refreshWithToken } from "../oauth";
 import { fileBodyRange } from "../upload";
 
@@ -83,6 +90,36 @@ async function initUpload(
   } catch (err) {
     throw explain(err);
   }
+}
+
+/**
+ * `post_info` del Direct Post costruito con le scelte fatte dall'utente nel
+ * pannello TikTok. Il privacy level NON ha un default: le linee guida vietano
+ * di preselezionarlo, e senza scelta la pubblicazione va fermata prima.
+ */
+function postInfo(input: PublishInput): Record<string, unknown> {
+  const o = input.options || {};
+  if (!o.privacyLevel) {
+    throw new Error(
+      "TikTok: scegli chi può vedere il video nel pannello TikTok prima di pubblicare."
+    );
+  }
+  // Un contenuto promozionale per un terzo non può essere privato: è TikTok a
+  // rifiutarlo, tanto vale dirlo con parole nostre.
+  if (o.brandedContent && o.privacyLevel === "SELF_ONLY") {
+    throw new Error(
+      "TikTok: un contenuto in promozione per un brand terzo non può essere pubblicato come privato."
+    );
+  }
+  return {
+    title: (input.title || input.body).slice(0, 150),
+    privacy_level: o.privacyLevel,
+    disable_comment: Boolean(o.disableComment),
+    disable_duet: Boolean(o.disableDuet),
+    disable_stitch: Boolean(o.disableStitch),
+    brand_organic_toggle: Boolean(o.brandOrganic),
+    brand_content_toggle: Boolean(o.brandedContent),
+  };
 }
 
 /** Carica il video a fette sull'upload_url restituito dall'init. */
@@ -186,13 +223,7 @@ export const tiktokModule: SocialModule = {
       draft ? `${API}/post/publish/inbox/video/init/` : `${API}/post/publish/video/init/`,
       draft
         ? { source_info: sourceInfo }
-        : {
-            post_info: {
-              title: (input.title || input.body).slice(0, 150),
-              privacy_level: "SELF_ONLY", // diventa PUBLIC_TO_EVERYONE quando l'app è auditata
-            },
-            source_info: sourceInfo,
-          }
+        : { post_info: postInfo(input), source_info: sourceInfo }
     );
     const data = init.data as { publish_id?: string; upload_url?: string } | undefined;
     if (!data?.upload_url || !data?.publish_id) {
@@ -203,6 +234,33 @@ export const tiktokModule: SocialModule = {
     await uploadChunks(data.upload_url, video, ranges);
 
     return { externalId: data.publish_id, externalUrl: undefined };
+  },
+
+  /**
+   * Dati che le Content Sharing Guidelines impongono di mostrare prima del
+   * Direct Post: su quale account si pubblica e quali privacy e interazioni
+   * sono ammesse. `privacy_level_options` dipende dall'account (un profilo
+   * privato non offre PUBLIC_TO_EVERYONE), quindi va letto ogni volta.
+   */
+  async creatorInfo(account: Account): Promise<CreatorInfo> {
+    const res = await apiFetch(`${API}/post/publish/creator_info/query/`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${account.accessToken}`,
+        "Content-Type": "application/json; charset=UTF-8",
+      },
+    });
+    const d = (res.data || {}) as Record<string, unknown>;
+    return {
+      nickname: (d.creator_nickname as string) || "Account TikTok",
+      username: d.creator_username as string | undefined,
+      avatarUrl: d.creator_avatar_url as string | undefined,
+      privacyLevels: (d.privacy_level_options as string[]) || [],
+      commentDisabled: Boolean(d.comment_disabled),
+      duetDisabled: Boolean(d.duet_disabled),
+      stitchDisabled: Boolean(d.stitch_disabled),
+      maxDurationSec: d.max_video_post_duration_sec as number | undefined,
+    };
   },
 
   async verifyToken(account: Account) {

@@ -3,7 +3,7 @@
  * Per aggiungere una piattaforma: creare src/social/<nome>/index.ts
  * che esporta un `SocialModule` e registrarlo in src/social/registry.ts.
  */
-import type { Account, Platform } from "@/types";
+import type { Account, Platform, TargetOptions } from "@/types";
 
 /** Token restituiti dallo scambio OAuth. */
 export interface TokenSet {
@@ -45,6 +45,26 @@ export interface PublishInput {
   media: PublishMedia[];
   /** Tipo scelto dall'utente (`reel`, `story`, …); assente = predefinito della piattaforma. */
   postType?: string | null;
+  /** Scelte fatte dall'utente nel pannello della piattaforma (TikTok: privacy, commenti…). */
+  options?: TargetOptions | null;
+}
+
+/**
+ * Dati che una piattaforma impone di mostrare PRIMA di pubblicare.
+ * TikTok li richiede esplicitamente nelle Content Sharing Guidelines: chi
+ * pubblica deve vedere su quale account sta pubblicando e scegliere privacy e
+ * interazioni, che l'app non può decidere per lui.
+ */
+export interface CreatorInfo {
+  nickname: string;
+  username?: string;
+  avatarUrl?: string;
+  /** Livelli di privacy ammessi per questo account, nell'ordine dato dall'API. */
+  privacyLevels: string[];
+  commentDisabled: boolean;
+  duetDisabled: boolean;
+  stitchDisabled: boolean;
+  maxDurationSec?: number;
 }
 
 export interface PublishResult {
@@ -92,6 +112,8 @@ export interface SocialModule {
   publish(input: PublishInput, account: Account): Promise<PublishResult>;
   /** Verifica che il token sia ancora valido. */
   verifyToken(account: Account): Promise<VerifyResult>;
+  /** Opzioni di pubblicazione da mostrare all'utente (solo dove la piattaforma le impone). */
+  creatorInfo?(account: Account): Promise<CreatorInfo>;
   /** Rinnova il token (solo per piattaforme con refresh token). */
   refresh?(account: Account): Promise<TokenSet | null>;
 }

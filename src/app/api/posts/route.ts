@@ -20,6 +20,20 @@ const postSchema = z.object({
   platforms: z.array(z.enum(PLATFORMS)).default([]),
   mediaIds: z.array(z.number()).default([]),
   postTypes: z.record(z.enum(PLATFORMS), z.string()).optional(),
+  // Scelte del pannello di piattaforma (TikTok: privacy e interazioni).
+  targetOptions: z
+    .record(
+      z.enum(PLATFORMS),
+      z.object({
+        privacyLevel: z.string().optional(),
+        disableComment: z.boolean().optional(),
+        disableDuet: z.boolean().optional(),
+        disableStitch: z.boolean().optional(),
+        brandOrganic: z.boolean().optional(),
+        brandedContent: z.boolean().optional(),
+      })
+    )
+    .optional(),
 });
 
 export const GET = withUser("posts", async (req, _ctx, user) => {

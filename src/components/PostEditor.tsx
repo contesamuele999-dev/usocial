@@ -7,10 +7,11 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { api, getPlatforms, fmtDate, retryInfo, type PlatformInfo } from "@/lib/client";
 import { useI18n } from "@/lib/i18n";
-import type { Platform, Post } from "@/types";
+import type { Platform, Post, TargetOptions } from "@/types";
 import { EmojiPicker } from "./EmojiPicker";
 import { MediaPicker } from "./MediaPicker";
 import { AiPanel } from "./AiPanel";
+import { TikTokOptions } from "./TikTokOptions";
 import { StatusBadge } from "./PostCard";
 
 /** Converte ISO ↔ valore per <input type="datetime-local"> (ora locale). */
@@ -37,6 +38,12 @@ export function PostEditor({ initial }: { initial: Post | null }) {
   const [postTypes, setPostTypes] = useState<Partial<Record<Platform, string>>>(
     Object.fromEntries(
       (initial?.targets || []).filter((t) => t.postType).map((t) => [t.platform, t.postType!])
+    )
+  );
+  // opzioni del pannello di piattaforma (TikTok: privacy, commenti, duetto…)
+  const [targetOptions, setTargetOptions] = useState<Partial<Record<Platform, TargetOptions>>>(
+    Object.fromEntries(
+      (initial?.targets || []).filter((t) => t.options).map((t) => [t.platform, t.options!])
     )
   );
   const [scheduled, setScheduled] = useState(isoToLocal(initial?.scheduledAt || null));
@@ -69,6 +76,7 @@ export function PostEditor({ initial }: { initial: Post | null }) {
     platforms: selected,
     mediaIds,
     postTypes,
+    targetOptions,
   });
 
   /** Salva (crea o aggiorna) e ritorna il post. */
@@ -79,9 +87,22 @@ export function PostEditor({ initial }: { initial: Post | null }) {
     return api<Post>("/api/posts", { method: "POST", body: JSON.stringify(payload(status)) });
   };
 
+  /**
+   * Il Direct Post TikTok richiede che la privacy la scelga l'utente: senza,
+   * la pubblicazione fallirebbe a metà coda invece che qui.
+   */
+  const tiktokNeedsPrivacy = () =>
+    selected.includes("tiktok") &&
+    (postTypes.tiktok || "video") !== "draft" &&
+    !targetOptions.tiktok?.privacyLevel;
+
   const doSave = async (status: "draft" | "scheduled") => {
     if (status === "scheduled" && !scheduled) {
       setMessage({ ok: false, text: t("editor.setDateTime") });
+      return;
+    }
+    if (status === "scheduled" && tiktokNeedsPrivacy()) {
+      setMessage({ ok: false, text: t("editor.tiktokPickPrivacy") });
       return;
     }
     setBusy(status);
@@ -107,6 +128,10 @@ export function PostEditor({ initial }: { initial: Post | null }) {
   const doPublish = async () => {
     if (selected.length === 0) {
       setMessage({ ok: false, text: t("editor.selectPlatform") });
+      return;
+    }
+    if (tiktokNeedsPrivacy()) {
+      setMessage({ ok: false, text: t("editor.tiktokPickPrivacy") });
       return;
     }
     if (!confirm(t("editor.confirmPublish", { platforms: selected.join(", ") }))) return;
@@ -275,6 +300,18 @@ export function PostEditor({ initial }: { initial: Post | null }) {
                         </option>
                       ))}
                     </select>
+                  )}
+
+                  {/* Opzioni imposte dalla piattaforma (TikTok Direct Post) */}
+                  {isOn && p.platform === "tiktok" && p.connected && (
+                    (postTypes.tiktok || types[0]) === "draft" ? (
+                      <p className="mt-2 text-[10px] text-gray-500">{t("tiktok.draftNote")}</p>
+                    ) : (
+                      <TikTokOptions
+                        value={targetOptions.tiktok || {}}
+                        onChange={(next) => setTargetOptions((prev) => ({ ...prev, tiktok: next }))}
+                      />
+                    )
                   )}
                 </div>
               );

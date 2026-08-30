@@ -95,6 +95,7 @@ async function publishTarget(post: Post, target: PostTarget) {
       body,
       media: toPublishMedia(post),
       postType: target.postType,
+      options: target.options,
     };
 
     if (mod.limits.requiresMedia && input.media.length === 0) {

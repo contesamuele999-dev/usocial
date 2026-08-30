@@ -16,11 +16,22 @@ import type {
   Post,
   PostStatus,
   PostTarget,
+  TargetOptions,
   Template,
   TemplateKind,
 } from "@/types";
 
 // ---------- mapping righe DB -> tipi ----------
+
+/** Le opzioni stanno in una colonna TEXT: un JSON corrotto non deve far cadere il post. */
+function parseOptions(raw: string | null): TargetOptions | null {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as TargetOptions;
+  } catch {
+    return null;
+  }
+}
 
 function rowToTarget(r: Record<string, unknown>): PostTarget {
   return {
@@ -30,6 +41,7 @@ function rowToTarget(r: Record<string, unknown>): PostTarget {
     adaptedTitle: r.adapted_title as string | null,
     adaptedBody: r.adapted_body as string | null,
     postType: (r.post_type as string | null) ?? null,
+    options: parseOptions(r.options as string | null),
     status: r.status as PostTarget["status"],
     externalId: r.external_id as string | null,
     externalUrl: r.external_url as string | null,
@@ -143,6 +155,7 @@ export interface PostInput {
   mediaIds: number[];
   /** Tipo di pubblicazione per piattaforma, es. { instagram: "reel" }. */
   postTypes?: Partial<Record<Platform, string>>;
+  targetOptions?: Partial<Record<Platform, TargetOptions>>;
 }
 
 export function listPosts(
@@ -214,7 +227,7 @@ export function createPost(userId: number, input: PostInput): Post {
       )
       .run(userId, input.title, input.body, input.hashtags, input.status, input.scheduledAt);
     const postId = info.lastInsertRowid as number;
-    syncTargets(postId, input.platforms, input.postTypes);
+    syncTargets(postId, input.platforms, input.postTypes, input.targetOptions);
     syncMedia(postId, ownedMediaIds(userId, input.mediaIds));
     return postId;
   });
@@ -229,7 +242,7 @@ export function updatePost(id: number, userId: number, input: PostInput): Post |
       `UPDATE posts SET title = ?, body = ?, hashtags = ?, status = ?, scheduled_at = ?,
        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND user_id = ?`
     ).run(input.title, input.body, input.hashtags, input.status, input.scheduledAt, id, userId);
-    syncTargets(id, input.platforms, input.postTypes);
+    syncTargets(id, input.platforms, input.postTypes, input.targetOptions);
     syncMedia(id, ownedMediaIds(userId, input.mediaIds));
   });
   tx();
@@ -240,7 +253,8 @@ export function updatePost(id: number, userId: number, input: PostInput): Post |
 function syncTargets(
   postId: number,
   platforms: Platform[],
-  postTypes?: Partial<Record<Platform, string>>
+  postTypes?: Partial<Record<Platform, string>>,
+  options?: Partial<Record<Platform, TargetOptions>>
 ) {
   const db = getDb();
   const existing = db
@@ -258,17 +272,24 @@ function syncTargets(
   const have = new Set(existing.map((e) => e.platform));
   for (const p of platforms) {
     if (!have.has(p)) {
-      db.prepare("INSERT INTO post_targets (post_id, platform, post_type) VALUES (?, ?, ?)").run(
-        postId,
-        p,
-        postTypes?.[p] ?? null
-      );
-    } else if (postTypes && p in postTypes) {
-      db.prepare("UPDATE post_targets SET post_type = ? WHERE post_id = ? AND platform = ?").run(
-        postTypes[p] ?? null,
-        postId,
-        p
-      );
+      db.prepare(
+        "INSERT INTO post_targets (post_id, platform, post_type, options) VALUES (?, ?, ?, ?)"
+      ).run(postId, p, postTypes?.[p] ?? null, options?.[p] ? JSON.stringify(options[p]) : null);
+    } else {
+      if (postTypes && p in postTypes) {
+        db.prepare("UPDATE post_targets SET post_type = ? WHERE post_id = ? AND platform = ?").run(
+          postTypes[p] ?? null,
+          postId,
+          p
+        );
+      }
+      if (options && p in options) {
+        db.prepare("UPDATE post_targets SET options = ? WHERE post_id = ? AND platform = ?").run(
+          options[p] ? JSON.stringify(options[p]) : null,
+          postId,
+          p
+        );
+      }
     }
   }
 }

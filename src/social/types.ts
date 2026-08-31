@@ -80,6 +80,17 @@ export interface PlatformLimits {
   mediaTypes: ("image" | "video")[];
   maxMedia: number;
   /**
+   * Tetto per singolo tipo di media, quando la piattaforma ha regole diverse
+   * per foto e video (TikTok: fino a 35 foto in un carosello, ma un solo
+   * video per post). Se assente vale solo `maxMedia`.
+   */
+  maxMediaByKind?: Partial<Record<"image" | "video", number>>;
+  /**
+   * true = la piattaforma non accetta foto e video nello stesso post
+   * (TikTok: un post è o un video o un carosello di foto).
+   */
+  noMixedMedia?: boolean;
+  /**
    * MIME accettati dalla piattaforma. Serve alla UI per avvisare PRIMA della
    * pubblicazione (es. Instagram accetta solo JPEG, non PNG né WebP).
    * Se assente, si controlla solo `mediaTypes`.

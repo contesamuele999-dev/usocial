@@ -328,6 +328,7 @@ const it = {
   calendar: {
     title: "Calendario",
     allPlatforms: "Tutte le piattaforme",
+    allStatuses: "Tutti gli stati",
     newPostOnDay: "Nuovo post in questo giorno",
     emptyPost: "(post)",
     duplicate: "Duplica",
@@ -535,6 +536,9 @@ const it = {
     processing: "Elaborazione sul server…",
     warnFormat: "{file} ({mime}) non è pubblicabile su {platform}: converti il file prima di pubblicare.",
     warnTooMany: "{platform} accetta al massimo {max} media (ne hai selezionati {n}).",
+    warnTooManyImages: "{platform} accetta al massimo {max} foto (ne hai selezionate {n}).",
+    warnTooManyVideos: "{platform} accetta al massimo {max} video (ne hai selezionati {n}).",
+    warnNoMix: "{platform} non accetta foto e video nello stesso post: scegli o l'uno o l'altro.",
     warnRequired: "{platform} richiede almeno un media.",
   },
   video: {
@@ -561,6 +565,7 @@ const it = {
     reel: "🎬 Reel",
     story: "⚡ Storia",
     video: "▶️ Video",
+    photo: "🖼️ Foto / carosello",
     short: "📱 Short",
     post: "📝 Post",
     draft: "📥 Carica come bozza",
@@ -593,6 +598,8 @@ const it = {
     musicPolicy: "Music Usage Confirmation",
     brandedPolicy: "Branded Content Policy",
     draftNote: "Con \"Carica come bozza\" scegli privacy e interazioni nell'app TikTok.",
+    photoNote:
+      "Le foto TikTok le scarica dal nostro server: il prefisso di APP_URL dev'essere verificato in developers.tiktok.com → Manage apps → URL properties.",
   },
   postCard: {
     empty: "(vuoto)",
@@ -862,6 +869,7 @@ const en: typeof it = {
   calendar: {
     title: "Calendar",
     allPlatforms: "All platforms",
+    allStatuses: "All statuses",
     newPostOnDay: "New post on this day",
     emptyPost: "(post)",
     duplicate: "Duplicate",
@@ -1068,6 +1076,9 @@ const en: typeof it = {
     processing: "Processing on the server…",
     warnFormat: "{file} ({mime}) cannot be published on {platform}: convert the file first.",
     warnTooMany: "{platform} accepts at most {max} media (you selected {n}).",
+    warnTooManyImages: "{platform} accepts at most {max} photos (you selected {n}).",
+    warnTooManyVideos: "{platform} accepts at most {max} videos (you selected {n}).",
+    warnNoMix: "{platform} does not accept photos and videos in the same post: pick one or the other.",
     warnRequired: "{platform} requires at least one media file.",
   },
   video: {
@@ -1094,6 +1105,7 @@ const en: typeof it = {
     reel: "🎬 Reel",
     story: "⚡ Story",
     video: "▶️ Video",
+    photo: "🖼️ Photo / carousel",
     short: "📱 Short",
     post: "📝 Post",
     draft: "📥 Upload as draft",
@@ -1126,6 +1138,8 @@ const en: typeof it = {
     musicPolicy: "Music Usage Confirmation",
     brandedPolicy: "Branded Content Policy",
     draftNote: "With \"Upload as draft\" you pick privacy and interactions in the TikTok app.",
+    photoNote:
+      "TikTok pulls photos from our server: the APP_URL prefix must be verified in developers.tiktok.com → Manage apps → URL properties.",
   },
   postCard: {
     empty: "(empty)",

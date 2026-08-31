@@ -71,6 +71,14 @@ export function MediaPicker({
   const [items, setItems] = useState<MediaItem[]>([]);
   /** Totale in libreria: gli `items` sono solo le pagine già caricate. */
   const [total, setTotal] = useState(0);
+  /**
+   * Media selezionati che non stanno nelle pagine caricate — tipicamente gli
+   * allegati di un post creato tempo fa (o dall'MCP) mentre la libreria è
+   * cresciuta. Senza questo recupero mirato l'editor li dava per non esistenti:
+   * niente miniature e, peggio, l'avviso "Instagram richiede almeno un media"
+   * su un post che i media ce li aveva eccome.
+   */
+  const [resolved, setResolved] = useState<MediaItem[]>([]);
   /** null = nessun upload in corso; altrimenti stato della barra. */
   const [progress, setProgress] = useState<{ name: string; percent: number; index: number; total: number } | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -88,6 +96,28 @@ export function MediaPicker({
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Recupera per id i selezionati che non sono nelle pagine già caricate.
+  // `requested` evita di richiedere all'infinito gli id che non tornano più
+  // (media cancellato dalla libreria dopo essere stato allegato).
+  const requested = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    const known = new Set([...items, ...resolved].map((m) => m.id));
+    const missing = selected.filter((id) => !known.has(id) && !requested.current.has(id));
+    if (missing.length === 0) return;
+    missing.forEach((id) => requested.current.add(id));
+    // Niente flag di annullamento: l'aggiornamento è additivo e deduplicato per
+    // id, e in sviluppo React monta due volte — annullare la prima richiesta
+    // avrebbe buttato via l'unica fatta, lasciando i media "non trovati".
+    api<{ items: MediaItem[] }>(`/api/media?ids=${missing.join(",")}`)
+      .then((r) => {
+        if (r.items.length === 0) return;
+        setResolved((prev) => [...prev, ...r.items.filter((m) => !prev.some((x) => x.id === m.id))]);
+      })
+      .catch(() => {
+        /* media cancellato o non accessibile: resta semplicemente fuori dalla griglia */
+      });
+  }, [selected, items, resolved]);
 
   const toggle = (id: number) => {
     onChange(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id]);
@@ -116,10 +146,18 @@ export function MediaPicker({
     }
   };
 
+  const byId = new Map([...items, ...resolved].map((m) => [m.id, m] as const));
   const selectedItems = selected
-    .map((id) => items.find((m) => m.id === id))
+    .map((id) => byId.get(id))
     .filter((m): m is MediaItem => !!m);
   const warnings = mediaWarnings(selectedItems, platforms, t);
+
+  /**
+   * Griglia: prima i selezionati fuori pagina (altrimenti sarebbero invisibili
+   * e impossibili da togliere), poi la libreria nell'ordine consueto.
+   */
+  const inPage = new Set(items.map((m) => m.id));
+  const grid = [...selectedItems.filter((m) => !inPage.has(m.id)), ...items];
 
   return (
     <div
@@ -191,11 +229,11 @@ export function MediaPicker({
         </ul>
       )}
 
-      {items.length === 0 ? (
+      {grid.length === 0 ? (
         <p className="text-sm text-gray-500">{t("mediaPicker.empty")}</p>
       ) : (
         <div className="grid max-h-48 grid-cols-4 gap-2 overflow-y-auto sm:grid-cols-6">
-          {items.map((m) => {
+          {grid.map((m) => {
             const idx = selected.indexOf(m.id);
             return (
               <button

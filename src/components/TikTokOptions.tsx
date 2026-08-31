@@ -21,9 +21,12 @@ const BRANDED_URL = "https://www.tiktok.com/legal/page/global/bc-policy/en";
 export function TikTokOptions({
   value,
   onChange,
+  photo = false,
 }: {
   value: TargetOptions;
   onChange: (next: TargetOptions) => void;
+  /** true = post di foto: duetto e stitch non esistono e non vanno mostrati. */
+  photo?: boolean;
 }) {
   const { t } = useI18n();
   const [info, setInfo] = useState<CreatorInfo | null>(null);
@@ -121,11 +124,17 @@ export function TikTokOptions({
         {interaction("comment", info.commentDisabled, value.disableComment, (on) => ({
           disableComment: !on,
         }))}
-        {interaction("duet", info.duetDisabled, value.disableDuet, (on) => ({ disableDuet: !on }))}
-        {interaction("stitch", info.stitchDisabled, value.disableStitch, (on) => ({
-          disableStitch: !on,
-        }))}
+        {/* Duetto e stitch valgono solo per i video: su un carosello di foto
+            TikTok non li prevede e mostrarli prometterebbe il falso. */}
+        {!photo &&
+          interaction("duet", info.duetDisabled, value.disableDuet, (on) => ({ disableDuet: !on }))}
+        {!photo &&
+          interaction("stitch", info.stitchDisabled, value.disableStitch, (on) => ({
+            disableStitch: !on,
+          }))}
       </div>
+
+      {photo && <p className="text-[10px] text-gray-400">{t("tiktok.photoNote")}</p>}
 
       <div className="space-y-1 border-t border-gray-200 pt-2 dark:border-gray-700">
         <span className="text-xs text-gray-500">{t("tiktok.disclose")}</span>

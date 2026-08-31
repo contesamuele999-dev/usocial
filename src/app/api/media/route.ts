@@ -32,6 +32,12 @@ const MAX_LIMIT = 200;
 
 export const GET = withUser("media", async (req, _ctx, user) => {
   const url = new URL(req.url);
+  // ?ids=3,7,9 — recupero mirato dei media già noti (l'editor li usa per gli
+  // allegati del post): non è una pagina della libreria, quindi niente limite.
+  const idsParam = url.searchParams.get("ids");
+  const ids = idsParam
+    ? idsParam.split(",").map((n) => Number(n.trim())).filter((n) => Number.isInteger(n) && n > 0).slice(0, MAX_LIMIT)
+    : undefined;
   // La lista è paginata: senza limite la Libreria restituiva l'intero archivio
   // e il browser apriva una richiesta per ogni file presente.
   const limit = Math.min(MAX_LIMIT, Math.max(1, Number(url.searchParams.get("limit")) || DEFAULT_LIMIT));
@@ -39,8 +45,9 @@ export const GET = withUser("media", async (req, _ctx, user) => {
   const { items, total } = listMedia(user.id, {
     q: url.searchParams.get("q") || undefined,
     folder: url.searchParams.get("folder") || undefined,
-    limit,
-    offset,
+    ids,
+    limit: ids ? undefined : limit,
+    offset: ids ? undefined : offset,
   });
   // `pending` dice, per ogni media, quali post in coda lo useranno: la Libreria
   // segnala così cosa è in attesa di pubblicazione e cosa si può cancellare.

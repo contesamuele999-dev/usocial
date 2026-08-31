@@ -1,0 +1,27 @@
+I was an engineer and now i'm a coach, i need tiktok to share my knowledge, gain followers and contact them.
+
+7663880862836213767
+
+I need to use my app (uSocial) to make the process of pusblishing faster so i can focus better on my work with clients.
+
+For now i am the only person that will use this app, maybe in the future i will open the app to some friends of mine. Anyway i don't want to sell the app, it's just for personal use.
+
+Access credentials, from /v2/oauth/token/:
+- access_token, refresh_token, scope
+- expires_in (converted to and stored as an absolute expiry timestamp)
+
+Creator identity, from /v2/user/info/:
+- open_id — stored as the identifier of the linked account
+- display_name — shown in the UI so the user knows which account is connected
+
+Publishing, from /v2/post/publish/video/init/ and /v2/post/publish/inbox/video/init/:
+- publish_id — stored to track the outcome of each publication
+- error.code, error.message and log_id — stored as plain text only when a request
+  fails, for troubleshooting
+
+Not stored: upload_url (kept in memory for the duration of the upload only), any
+creator_info field, and the video file itself, which is deleted from disk after a
+successful publication.
+
+All data is kept in a self-hosted single-user SQLite database, is never shared with
+third parties, and every token is deleted when the user disconnects the account.

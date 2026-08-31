@@ -108,12 +108,44 @@ describe("avvisi di formato", () => {
     ).toHaveLength(0);
   });
 
-  it("segnala un'immagine su TikTok (solo video) e il video WebM non supportato", () => {
+  it("accetta una foto su TikTok, ma non il PNG né il video WebM", () => {
     expect(
       mediaWarnings([{ originalName: "a.jpg", mime: "image/jpeg" }], [info(tiktokModule)], t)
+    ).toHaveLength(0);
+    expect(
+      mediaWarnings([{ originalName: "a.png", mime: "image/png" }], [info(tiktokModule)], t)
     ).toHaveLength(1);
     expect(
       mediaWarnings([{ originalName: "a.webm", mime: "video/webm" }], [info(tiktokModule)], t)
     ).toHaveLength(1);
+  });
+
+  it("segnala due video su TikTok, che ne accetta uno solo", () => {
+    const two = [
+      { originalName: "a.mp4", mime: "video/mp4" },
+      { originalName: "b.mp4", mime: "video/mp4" },
+    ];
+    expect(mediaWarnings(two, [info(tiktokModule)], t)).toEqual([
+      "mediaPicker.warnTooManyVideos",
+    ]);
+  });
+
+  it("segnala foto e video mescolati su TikTok", () => {
+    const mixed = [
+      { originalName: "a.jpg", mime: "image/jpeg" },
+      { originalName: "b.mp4", mime: "video/mp4" },
+    ];
+    expect(mediaWarnings(mixed, [info(tiktokModule)], t)).toEqual(["mediaPicker.warnNoMix"]);
+  });
+
+  it("accetta un carosello di foto su TikTok fino a 35 immagini", () => {
+    const photos = Array.from({ length: 35 }, (_, i) => ({
+      originalName: `slide-${i}.jpg`,
+      mime: "image/jpeg",
+    }));
+    expect(mediaWarnings(photos, [info(tiktokModule)], t)).toHaveLength(0);
+    expect(
+      mediaWarnings([...photos, { originalName: "x.jpg", mime: "image/jpeg" }], [info(tiktokModule)], t)
+    ).toEqual(["mediaPicker.warnTooMany", "mediaPicker.warnTooManyImages"]);
   });
 });

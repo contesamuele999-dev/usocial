@@ -109,6 +109,21 @@ immagini/video su Instagram, `APP_URL` deve essere raggiungibile da internet
 (es. reverse proxy, Cloudflare Tunnel, ngrok). Testo, bozze e tutto il resto funzionano
 anche in locale.
 
+### ⚠️ Nota su TikTok: video, foto e caroselli
+
+TikTok accetta due tipi di post, che l'editor distingue con il *tipo di pubblicazione*:
+
+- **Video** — un solo MP4/MOV, caricato direttamente dal server (nessun requisito extra).
+- **Foto / carosello** — da 1 a 35 immagini **JPEG o WebP**. Qui TikTok non accetta
+  l'upload dei file: le **scarica dai nostri URL**, quindi `APP_URL` dev'essere
+  raggiungibile da internet **e** il suo prefisso va verificato una volta in
+  developers.tiktok.com → *Manage apps* → **URL properties**. Senza verifica l'API
+  risponde `url_ownership_unverified`.
+
+Con il tipo **"Carica come bozza"** il contenuto (video o foto) finisce nelle bozze
+dell'app TikTok invece di essere pubblicato: non richiede l'audit del Direct Post ed è
+la via più semplice finché l'audit non è stato approvato.
+
 ---
 
 ## Architettura
@@ -210,6 +225,33 @@ claude mcp add usocial \
 Tool disponibili: `usocial_platforms`, `usocial_list_posts`, `usocial_get_post`,
 `usocial_upload_media`, `usocial_list_media`, `usocial_create_post`,
 `usocial_update_post`, `usocial_publish_post`, `usocial_delete_post`, `usocial_storage`.
+
+`usocial_create_post` / `usocial_update_post` accettano anche il **tipo di
+pubblicazione** e le **opzioni di piattaforma**, e verificano i limiti (media
+obbligatori, formati, numero massimo, privacy TikTok) *prima* di creare il post:
+
+```jsonc
+{
+  "body": "Testo del post",
+  "platforms": ["tiktok"],
+  "mediaIds": [88],
+  // bozza nell'app TikTok: nessun audit e nessuna privacy da scegliere
+  "postTypes": { "tiktok": "draft" }
+}
+```
+
+```jsonc
+{
+  "body": "Testo del post",
+  "platforms": ["tiktok"],
+  "mediaIds": [73, 74, 75],          // carosello di foto
+  "postTypes": { "tiktok": "photo" }, // Direct Post: serve la privacy
+  "targetOptions": { "tiktok": { "privacyLevel": "PUBLIC_TO_EVERYONE" } }
+}
+```
+
+`status` (`draft` / `scheduled`) riguarda **uSocial**, non TikTok: la bozza *su TikTok*
+si ottiene solo con `postTypes.tiktok = "draft"`.
 
 ---
 

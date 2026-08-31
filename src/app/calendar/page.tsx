@@ -6,11 +6,14 @@
  */
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { api, getPlatforms, type PlatformInfo } from "@/lib/client";
+import { api, getPlatforms, STATUS_ACCENT, type PlatformInfo } from "@/lib/client";
 import { useI18n } from "@/lib/i18n";
-import type { Platform, Post } from "@/types";
+import type { Platform, Post, PostStatus } from "@/types";
 
 const DAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
+
+/** Stati mostrati in legenda (e nel filtro), nell'ordine del ciclo di vita. */
+const STATUS_KEYS: PostStatus[] = ["draft", "scheduled", "publishing", "published", "partial", "failed"];
 
 function ymd(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -26,6 +29,7 @@ export default function CalendarPage() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [platforms, setPlatforms] = useState<PlatformInfo[]>([]);
   const [filter, setFilter] = useState<Platform | "">("");
+  const [statusFilter, setStatusFilter] = useState<PostStatus | "">("");
   const [dragId, setDragId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
@@ -52,9 +56,11 @@ export default function CalendarPage() {
     return d;
   });
 
-  const visible = filter
-    ? posts.filter((p) => p.targets.some((t) => t.platform === filter))
-    : posts;
+  const visible = posts.filter(
+    (p) =>
+      (!filter || p.targets.some((t) => t.platform === filter)) &&
+      (!statusFilter || p.status === statusFilter)
+  );
 
   const byDay = (d: Date) =>
     visible.filter((p) => p.scheduledAt && ymd(new Date(p.scheduledAt)) === ymd(d));
@@ -105,6 +111,18 @@ export default function CalendarPage() {
               </option>
             ))}
           </select>
+          <select
+            className="input w-auto"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as PostStatus | "")}
+          >
+            <option value="">{t("calendar.allStatuses")}</option>
+            {STATUS_KEYS.map((st) => (
+              <option key={st} value={st}>
+                {STATUS_ACCENT[st].icon} {t(`status.${st}`)}
+              </option>
+            ))}
+          </select>
           <button
             className="btn-secondary px-3"
             onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))}
@@ -150,15 +168,21 @@ export default function CalendarPage() {
                 {day.getDate()}
               </Link>
               <div className="space-y-1">
-                {dayPosts.map((p) => (
+                {dayPosts.map((p) => {
+                  const accent = STATUS_ACCENT[p.status] ?? STATUS_ACCENT.draft;
+                  return (
                   <Link
                     key={p.id}
                     href={`/posts/${p.id}`}
                     draggable
                     onDragStart={() => setDragId(p.id)}
-                    className="group block cursor-grab rounded-md border border-gray-200 bg-gray-50 px-1.5 py-1 text-xs hover:border-brand-400 dark:border-gray-700 dark:bg-gray-900"
-                    title={p.title || p.body}
+                    className={`group block cursor-grab rounded-md border border-l-4 border-gray-200 px-1.5 py-1 text-xs hover:ring-1 hover:ring-brand-400 dark:border-gray-700 ${accent.tint}`}
+                    style={{ borderLeftColor: accent.color }}
+                    title={`${t(`status.${p.status}`)} — ${p.title || p.body}`}
                   >
+                    <span className="mr-1" aria-hidden>
+                      {accent.icon}
+                    </span>
                     <span className="mr-1 inline-flex gap-0.5">
                       {p.targets.map((t) => {
                         const info = platforms.find((x) => x.platform === t.platform);
@@ -180,11 +204,24 @@ export default function CalendarPage() {
                       ⧉
                     </button>
                   </Link>
-                ))}
+                  );
+                })}
               </div>
             </div>
           );
         })}
+      </div>
+      {/* Legenda: senza, i colori delle chip andrebbero indovinati. */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
+        {STATUS_KEYS.map((st) => (
+          <span key={st} className="inline-flex items-center gap-1.5">
+            <span
+              className="inline-block h-3 w-3 rounded-sm"
+              style={{ backgroundColor: STATUS_ACCENT[st].color }}
+            />
+            {STATUS_ACCENT[st].icon} {t(`status.${st}`)}
+          </span>
+        ))}
       </div>
       <p className="text-xs text-gray-500">{t("calendar.hint")}</p>
     </div>

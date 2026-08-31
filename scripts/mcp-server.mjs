@@ -77,11 +77,121 @@ async function uploadFile(filePath, folder) {
   return json;
 }
 
+/**
+ * Recupera i media per id. Usa il filtro `?ids=` quando il server lo supporta e
+ * ripiega su una pagina larga della libreria altrimenti: così il controllo
+ * funziona anche contro un'istanza non ancora aggiornata, invece di dichiarare
+ * inesistente ogni file fuori dalla prima pagina.
+ */
+async function resolveMedia(ids) {
+  const wanted = new Set(ids);
+  const pick = (r) => (r.items || []).filter((m) => wanted.has(m.id));
+  let found = pick(await call("GET", `/api/media?ids=${ids.join(",")}`));
+  if (found.length < ids.length) {
+    const seen = new Set(found.map((m) => m.id));
+    found = [...found, ...pick(await call("GET", "/api/media?limit=200")).filter((m) => !seen.has(m.id))];
+  }
+  return found;
+}
+
+/**
+ * Controlla il post contro i limiti veri delle piattaforme PRIMA di crearlo.
+ *
+ * Perché: senza questo controllo l'agente creava allegramente un post con
+ * Instagram selezionato e nessuna immagine, e l'errore ("Instagram richiede
+ * almeno un media") saltava fuori solo aprendo l'editor nel browser, o peggio
+ * al momento della pubblicazione programmata.
+ *
+ * Ritorna la lista dei problemi trovati (vuota = tutto a posto).
+ */
+async function checkPost({ platforms = [], mediaIds = [], postTypes = {}, targetOptions = {}, body = "" }) {
+  if (platforms.length === 0) return [];
+  const infos = await call("GET", "/api/platforms");
+  const media = mediaIds.length ? await resolveMedia(mediaIds) : [];
+  const kind = (m) => (m.mime.startsWith("video/") ? "video" : "image");
+  const images = media.filter((m) => kind(m) === "image").length;
+  const videos = media.length - images;
+  const problems = [];
+
+  for (const id of mediaIds) {
+    if (!media.some((m) => m.id === id)) problems.push(`media ${id} inesistente o non tuo.`);
+  }
+
+  for (const name of platforms) {
+    const p = infos.find((x) => x.platform === name);
+    if (!p) {
+      problems.push(`piattaforma sconosciuta: ${name}.`);
+      continue;
+    }
+    const { limits } = p;
+    if (!p.connected) problems.push(`${p.displayName}: account non collegato.`);
+    if (limits.requiresMedia && media.length === 0) {
+      problems.push(`${p.displayName} richiede almeno un media: carica un file con usocial_upload_media e passalo in mediaIds.`);
+    }
+    if (media.length > limits.maxMedia) {
+      problems.push(`${p.displayName} accetta al massimo ${limits.maxMedia} media (ne hai ${media.length}).`);
+    }
+    if (limits.maxMediaByKind?.image !== undefined && images > limits.maxMediaByKind.image) {
+      problems.push(`${p.displayName} accetta al massimo ${limits.maxMediaByKind.image} foto (ne hai ${images}).`);
+    }
+    if (limits.maxMediaByKind?.video !== undefined && videos > limits.maxMediaByKind.video) {
+      problems.push(`${p.displayName} accetta al massimo ${limits.maxMediaByKind.video} video (ne hai ${videos}).`);
+    }
+    if (limits.noMixedMedia && images > 0 && videos > 0) {
+      problems.push(`${p.displayName} non accetta foto e video nello stesso post.`);
+    }
+    for (const m of media) {
+      if (!limits.mediaTypes.includes(kind(m))) {
+        problems.push(`${p.displayName} non accetta ${kind(m) === "video" ? "video" : "immagini"} (${m.originalName}).`);
+      } else if (limits.mimeTypes && !limits.mimeTypes.includes(m.mime)) {
+        problems.push(`${p.displayName} non accetta ${m.mime} (${m.originalName}): ammessi ${limits.mimeTypes.join(", ")}.`);
+      }
+    }
+    if (body.length > limits.maxChars) {
+      problems.push(`${p.displayName}: testo troppo lungo (${body.length}/${limits.maxChars} caratteri).`);
+    }
+    const type = postTypes[name];
+    if (type && limits.postTypes && !limits.postTypes.includes(type)) {
+      problems.push(`${p.displayName}: tipo di post "${type}" non valido (ammessi: ${limits.postTypes.join(", ")}).`);
+    }
+    // TikTok: il Direct Post pretende che la privacy la scelga una persona.
+    // Con postType "draft" la sceglie nell'app TikTok e qui non serve.
+    if (name === "tiktok" && (type || limits.postTypes?.[0]) !== "draft" && !targetOptions.tiktok?.privacyLevel) {
+      problems.push(
+        'TikTok: il Direct Post richiede targetOptions.tiktok.privacyLevel (PUBLIC_TO_EVERYONE, MUTUAL_FOLLOW_FRIENDS, FOLLOWER_OF_CREATOR, SELF_ONLY). Per non sceglierla usa postTypes.tiktok = "draft".'
+      );
+    }
+  }
+  return problems;
+}
+
+/** Blocca la creazione se il post non è pubblicabile, elencando i motivi. */
+async function assertPublishable(args) {
+  const problems = await checkPost(args);
+  if (problems.length > 0) {
+    throw new Error(`Il post non è pubblicabile così:\n- ${problems.join("\n- ")}`);
+  }
+}
+
+/** Schema condiviso da create/update per tipi di post e opzioni di piattaforma. */
+const TARGET_PROPS = {
+  postTypes: {
+    type: "object",
+    description:
+      'Tipo di pubblicazione per piattaforma, es. {"tiktok":"draft","instagram":"carousel"}. Valori ammessi in usocial_platforms → limits.postTypes. TikTok: "video" (Direct Post video), "photo" (foto o carosello), "draft" (carica nelle bozze TikTok, non richiede audit né privacy).',
+  },
+  targetOptions: {
+    type: "object",
+    description:
+      'Opzioni per piattaforma. Solo TikTok le usa: {"tiktok":{"privacyLevel":"PUBLIC_TO_EVERYONE","disableComment":false,"disableDuet":false,"disableStitch":false,"brandOrganic":false,"brandedContent":false}}. privacyLevel è obbligatorio per i Direct Post TikTok.',
+  },
+};
+
 const TOOLS = [
   {
     name: "usocial_platforms",
     description:
-      "Elenca le piattaforme social (Facebook, Instagram, TikTok, YouTube, LinkedIn) con stato di connessione e limiti (caratteri, tipi di media ammessi, numero massimo di media).",
+      "Elenca le piattaforme social (Facebook, Instagram, TikTok, YouTube, LinkedIn) con stato di connessione e limiti: caratteri, MIME ammessi, numero massimo di media (anche per tipo) e tipi di pubblicazione validi per postTypes. Da consultare prima di creare un post.",
     inputSchema: { type: "object", properties: {} },
     run: () => call("GET", "/api/platforms"),
   },
@@ -135,7 +245,9 @@ const TOOLS = [
   {
     name: "usocial_create_post",
     description:
-      "Crea un post. Con scheduledAt (ISO 8601) e status='scheduled' viene pubblicato automaticamente a quell'ora; con status='draft' resta bozza.",
+      "Crea un post. Con scheduledAt (ISO 8601) e status='scheduled' viene pubblicato automaticamente a quell'ora; con status='draft' resta bozza in uSocial. " +
+      "Attenzione: status riguarda uSocial, non TikTok — per caricare il contenuto nelle BOZZE di TikTok serve postTypes.tiktok='draft'. " +
+      "I limiti di piattaforma (media obbligatori, formati, numero massimo, privacy TikTok) sono verificati prima di creare: se qualcosa non torna il post non viene creato e l'errore dice cosa manca.",
     inputSchema: {
       type: "object",
       properties: {
@@ -146,11 +258,12 @@ const TOOLS = [
         mediaIds: { type: "array", items: { type: "number" } },
         scheduledAt: { type: "string", description: "Data/ora ISO 8601, es. 2026-09-01T18:30:00Z" },
         status: { type: "string", enum: ["draft", "scheduled"] },
+        ...TARGET_PROPS,
       },
       required: ["body"],
     },
-    run: (a) =>
-      call("POST", "/api/posts", {
+    run: async (a) => {
+      const payload = {
         title: a.title || "",
         body: a.body,
         hashtags: a.hashtags || "",
@@ -158,11 +271,23 @@ const TOOLS = [
         mediaIds: a.mediaIds || [],
         scheduledAt: a.scheduledAt || null,
         status: a.status || (a.scheduledAt ? "scheduled" : "draft"),
-      }),
+        postTypes: a.postTypes || undefined,
+        targetOptions: a.targetOptions || undefined,
+      };
+      await assertPublishable({
+        ...payload,
+        // Gli hashtag finiscono in coda al testo al momento di pubblicare:
+        // vanno contati adesso, o il limite di caratteri sfora dopo.
+        body: [payload.body, payload.hashtags].filter(Boolean).join("\n\n"),
+        postTypes: a.postTypes || {},
+        targetOptions: a.targetOptions || {},
+      });
+      return call("POST", "/api/posts", payload);
+    },
   },
   {
     name: "usocial_update_post",
-    description: "Aggiorna un post esistente (stessi campi di usocial_create_post).",
+    description: "Aggiorna un post esistente (stessi campi di usocial_create_post). I campi omessi restano invariati.",
     inputSchema: {
       type: "object",
       properties: {
@@ -174,12 +299,23 @@ const TOOLS = [
         mediaIds: { type: "array", items: { type: "number" } },
         scheduledAt: { type: "string" },
         status: { type: "string", enum: ["draft", "scheduled"] },
+        ...TARGET_PROPS,
       },
       required: ["id"],
     },
     run: async (a) => {
       const current = await call("GET", `/api/posts/${a.id}`);
-      return call("PUT", `/api/posts/${a.id}`, {
+      // I tipi e le opzioni già scelti (nell'editor o in una chiamata
+      // precedente) vanno conservati: un update parziale non deve azzerarli.
+      const postTypes = {
+        ...Object.fromEntries(current.targets.filter((t) => t.postType).map((t) => [t.platform, t.postType])),
+        ...(a.postTypes || {}),
+      };
+      const targetOptions = {
+        ...Object.fromEntries(current.targets.filter((t) => t.options).map((t) => [t.platform, t.options])),
+        ...(a.targetOptions || {}),
+      };
+      const payload = {
         title: a.title ?? current.title,
         body: a.body ?? current.body,
         hashtags: a.hashtags ?? current.hashtags,
@@ -187,7 +323,14 @@ const TOOLS = [
         mediaIds: a.mediaIds ?? current.media.map((m) => m.id),
         scheduledAt: a.scheduledAt ?? current.scheduledAt,
         status: a.status ?? (current.status === "scheduled" ? "scheduled" : "draft"),
+        postTypes,
+        targetOptions,
+      };
+      await assertPublishable({
+        ...payload,
+        body: [payload.body, payload.hashtags].filter(Boolean).join("\n\n"),
       });
+      return call("PUT", `/api/posts/${a.id}`, payload);
     },
   },
   {

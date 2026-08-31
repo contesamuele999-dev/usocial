@@ -101,10 +101,13 @@ export function mediaWarnings(
   t: (key: string, vars?: Record<string, string | number>) => string
 ): string[] {
   const out: string[] = [];
+  const kind = (m: string): "image" | "video" => (m.startsWith("video/") ? "video" : "image");
+  const images = items.filter((it) => kind(it.mime) === "image").length;
+  const videos = items.length - images;
+
   for (const p of platforms) {
-    const kind = (m: string) => (m.startsWith("video/") ? "video" : "image");
     for (const it of items) {
-      const okType = p.limits.mediaTypes.includes(kind(it.mime) as "image" | "video");
+      const okType = p.limits.mediaTypes.includes(kind(it.mime));
       const okMime = !p.limits.mimeTypes || p.limits.mimeTypes.includes(it.mime);
       if (!okType || !okMime) {
         out.push(
@@ -125,12 +128,45 @@ export function mediaWarnings(
         })
       );
     }
+    // Tetto per tipo: TikTok accetta 35 foto ma un solo video, e `maxMedia` da
+    // solo lascerebbe passare due video senza dire nulla.
+    for (const [k, n, key] of [
+      ["image", images, "mediaPicker.warnTooManyImages"],
+      ["video", videos, "mediaPicker.warnTooManyVideos"],
+    ] as const) {
+      const max = p.limits.maxMediaByKind?.[k];
+      if (max !== undefined && n > max) {
+        out.push(t(key, { platform: p.displayName, max, n }));
+      }
+    }
+    if (p.limits.noMixedMedia && images > 0 && videos > 0) {
+      out.push(t("mediaPicker.warnNoMix", { platform: p.displayName }));
+    }
     if (p.limits.requiresMedia && items.length === 0) {
       out.push(t("mediaPicker.warnRequired", { platform: p.displayName }));
     }
   }
   return out;
 }
+
+/**
+ * Accento visivo per stato, usato dal calendario: barra colorata a sinistra,
+ * sfondo tenue e un'icona. Serve a distinguere bozza, programmato e pubblicato
+ * senza dover aprire il post né leggere il badge.
+ *
+ * Il colore della barra è un valore, non una classe: `border-l-<colore>`
+ * perderebbe contro il `dark:border-gray-700` della chip (due classi contro
+ * una) e in tema scuro la barra sparirebbe. Lo sfondo invece è una classe,
+ * perché deve cambiare fra tema chiaro e scuro.
+ */
+export const STATUS_ACCENT: Record<string, { color: string; tint: string; icon: string }> = {
+  draft: { color: "#9ca3af", tint: "bg-gray-50 dark:bg-gray-900", icon: "✏️" },
+  scheduled: { color: "#3b82f6", tint: "bg-blue-50 dark:bg-blue-950/40", icon: "🕒" },
+  publishing: { color: "#f59e0b", tint: "bg-amber-50 dark:bg-amber-950/40", icon: "⏳" },
+  published: { color: "#16a34a", tint: "bg-green-50 dark:bg-green-950/40", icon: "✅" },
+  partial: { color: "#f97316", tint: "bg-orange-50 dark:bg-orange-950/40", icon: "◑" },
+  failed: { color: "#ef4444", tint: "bg-red-50 dark:bg-red-950/40", icon: "⚠️" },
+};
 
 /** Classi CSS del badge per ogni stato. L'etichetta testuale è tradotta via i18n (`status.<stato>`). */
 export const STATUS_CLASSES: Record<string, string> = {

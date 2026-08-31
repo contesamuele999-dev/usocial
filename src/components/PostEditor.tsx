@@ -309,6 +309,7 @@ export function PostEditor({ initial }: { initial: Post | null }) {
                     ) : (
                       <TikTokOptions
                         value={targetOptions.tiktok || {}}
+                        photo={(postTypes.tiktok || types[0]) === "photo"}
                         onChange={(next) => setTargetOptions((prev) => ({ ...prev, tiktok: next }))}
                       />
                     )

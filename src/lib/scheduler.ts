@@ -2,6 +2,8 @@
  * Scheduler dei post. Ogni 60 secondi:
  *  1) pubblica i post programmati la cui ora è arrivata (primo tentativo);
  *  2) ritenta i target falliti il cui backoff è scaduto (retry automatico).
+ * Ogni ora rinnova i token social in scadenza e toglie dal disco i media dei
+ * post pubblicati da oltre un giorno.
  * All'avvio recupera le pubblicazioni interrotte da un riavvio.
  * Avviato una sola volta da src/instrumentation.ts.
  */
@@ -10,6 +12,11 @@ import { logger } from "./logger";
 const INTERVAL_MS = 60_000;
 /** Ogni ora si controllano i token social vicini alla scadenza. */
 const TOKEN_INTERVAL_MS = 3600_000;
+/**
+ * Ogni ora si tolgono dal disco i media scaduti. Il ritardo vero (un giorno)
+ * sta in `MEDIA_RECLAIM_DELAY_MS`: qui si decide solo ogni quanto guardare.
+ */
+const CLEANUP_INTERVAL_MS = 3600_000;
 
 export function startScheduler() {
   const g = globalThis as unknown as { __usocialScheduler?: boolean };
@@ -64,6 +71,20 @@ export function startScheduler() {
   };
   setInterval(refreshTick, TOKEN_INTERVAL_MS);
   setTimeout(refreshTick, 15_000);
+
+  // Pulizia differita dei media: i file dei post pubblicati restano un giorno
+  // a disposizione (un post per un'altra piattaforma può ancora doverli usare)
+  // e solo dopo vengono rimossi.
+  const cleanupTick = async () => {
+    try {
+      const { sweepReclaimableMedia } = await import("@/social/publisher");
+      await sweepReclaimableMedia();
+    } catch (err) {
+      logger.error("scheduler", "Errore nella pulizia dei media", String(err));
+    }
+  };
+  setInterval(cleanupTick, CLEANUP_INTERVAL_MS);
+  setTimeout(cleanupTick, 30_000);
 }
 
 /** Rimette in coda i target rimasti in "publishing" (interrotti da un riavvio). */

@@ -62,6 +62,7 @@ function rowToMedia(r: Record<string, unknown>): MediaItem {
     size: r.size as number,
     folder: r.folder as string,
     tags: r.tags as string,
+    reclaimAt: (r.reclaim_at as string | null) ?? null,
     createdAt: r.created_at as string,
   };
 }
@@ -303,6 +304,9 @@ function syncMedia(postId: number, mediaIds: number[]) {
       mediaId,
       i
     );
+    // Il media torna in uso: annulla l'eventuale pulizia programmata da una
+    // pubblicazione precedente, altrimenti sparirebbe da sotto a questo post.
+    db.prepare("UPDATE media SET reclaim_at = NULL WHERE id = ?").run(mediaId);
   });
 }
 
@@ -567,7 +571,10 @@ export function getMediaSystem(id: number): MediaItem | null {
   return row ? rowToMedia(row) : null;
 }
 
-export function createMedia(userId: number, item: Omit<MediaItem, "id" | "userId" | "createdAt">): MediaItem {
+export function createMedia(
+  userId: number,
+  item: Omit<MediaItem, "id" | "userId" | "createdAt" | "reclaimAt">
+): MediaItem {
   const info = getDb()
     .prepare(
       "INSERT INTO media (user_id, filename, original_name, mime, size, folder, tags) VALUES (?, ?, ?, ?, ?, ?, ?)"
@@ -625,6 +632,57 @@ export function reclaimablePostMedia(postId: number): MediaItem[] {
          )`
     )
     .all(postId) as Record<string, unknown>[];
+  return rows.map(rowToMedia);
+}
+
+/**
+ * Programma (non esegue) la rimozione dei media di un post pubblicato: scrive
+ * `reclaim_at` sui media che nessun contenuto in coda sta usando.
+ *
+ * Perché non si cancella subito: un post pubblicato su Instagram e Facebook
+ * portava via il file mentre il post TikTok delle ore successive era ancora da
+ * creare (o era stato creato dall'MCP un istante dopo), e la pubblicazione
+ * falliva con "TikTok richiede almeno un media". Con 24 ore di margine il file
+ * resta a disposizione per tutto il tempo in cui può ancora servire.
+ *
+ * Ritorna quanti media sono stati marcati.
+ */
+export function scheduleMediaReclaim(postId: number, at: Date): number {
+  const iso = at.toISOString();
+  const db = getDb();
+  let marked = 0;
+  for (const media of reclaimablePostMedia(postId)) {
+    // COALESCE: se una pubblicazione precedente aveva già fissato una scadenza
+    // più vicina la si tiene, così il conto alla rovescia non riparte da capo.
+    const info = db
+      .prepare("UPDATE media SET reclaim_at = COALESCE(reclaim_at, ?) WHERE id = ?")
+      .run(iso, media.id);
+    marked += info.changes;
+  }
+  return marked;
+}
+
+/**
+ * Media la cui scadenza è passata e che nessun contenuto in coda sta più
+ * usando: la pulizia automatica può toglierli dal disco. Il secondo controllo
+ * è necessario perché fra la programmazione e adesso il file può essere stato
+ * allegato a una nuova bozza.
+ */
+export function dueReclaimableMedia(now: Date): MediaItem[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT m.* FROM media m
+       WHERE m.reclaim_at IS NOT NULL
+         AND m.reclaim_at <= ?
+         AND NOT EXISTS (
+           SELECT 1 FROM post_media pm
+           JOIN posts p ON p.id = pm.post_id
+           WHERE pm.media_id = m.id
+             AND p.status IN ('draft','scheduled','publishing','partial')
+         )
+       ORDER BY m.reclaim_at`
+    )
+    .all(now.toISOString()) as Record<string, unknown>[];
   return rows.map(rowToMedia);
 }
 

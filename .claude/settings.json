@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__usocial__usocial_create_post",
+      "mcp__usocial__usocial_update_post",
+      "mcp__usocial__usocial_upload_media",
+      "mcp__usocial__usocial_list_posts",
+      "mcp__usocial__usocial_get_post",
+      "mcp__usocial__usocial_list_media",
+      "mcp__usocial__usocial_platforms",
+      "mcp__usocial__usocial_storage"
+    ]
+  }
+}

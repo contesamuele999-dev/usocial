@@ -10,9 +10,10 @@ import { errorMessage } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import {
   deleteMediaSystem,
+  dueReclaimableMedia,
   getAccount,
   getPostSystem,
-  reclaimablePostMedia,
+  scheduleMediaReclaim,
   setPostStatus,
   updateTarget,
 } from "@/lib/repo";
@@ -140,29 +141,60 @@ async function publishTarget(post: Post, target: PostTarget) {
   }
 }
 
+/** Quanto si aspetta prima di togliere dal disco i media di un post pubblicato. */
+export const MEDIA_RECLAIM_DELAY_MS = 24 * 3600_000;
+
 /**
- * Libera il disco dopo una pubblicazione riuscita: elimina i media del post
- * che nessun contenuto in coda usa più. Disattivabile con l'impostazione
- * `autoCleanupMedia` = "off" (Impostazioni → Spazio).
+ * Programma la liberazione del disco dopo una pubblicazione riuscita: i media
+ * che nessun contenuto in coda usa più vengono marcati per la rimozione fra
+ * MEDIA_RECLAIM_DELAY_MS. A cancellarli davvero è `sweepReclaimableMedia`,
+ * chiamata dallo scheduler.
+ *
+ * Prima la cancellazione era immediata, e bastava che il post successivo (es.
+ * TikTok subito dopo Instagram e Facebook) venisse creato un istante dopo la
+ * pubblicazione per trovarsi senza allegato: "TikTok richiede almeno un media".
+ * Il giorno di margine copre quella finestra.
  */
-async function cleanupPublishedMedia(post: Post) {
-  if (getSetting(post.userId, "autoCleanupMedia", "on") !== "on") return;
-  let freed = 0;
-  let count = 0;
-  for (const media of reclaimablePostMedia(post.id)) {
-    deleteMediaSystem(media.id);
-    await deleteFile(media.filename);
-    freed += media.size;
-    count++;
-  }
-  if (count > 0) {
+function scheduleMediaCleanup(post: Post) {
+  const at = new Date(Date.now() + MEDIA_RECLAIM_DELAY_MS);
+  const marked = scheduleMediaReclaim(post.id, at);
+  if (marked > 0) {
     logger.info(
       "media",
-      `Post #${post.id} pubblicato: rimossi ${count} media dal disco (${(freed / 1024 / 1024).toFixed(1)} MB liberati)`,
+      `Post #${post.id} pubblicato: ${marked} media verranno rimossi dal disco dopo il ${at.toLocaleString("it-IT")}`,
       undefined,
       post.userId
     );
   }
+}
+
+/**
+ * Toglie dal disco i media scaduti (pubblicati da oltre un giorno e non usati
+ * da nessun contenuto in coda). Chiamata periodicamente dallo scheduler.
+ * Disattivabile per utente con `autoCleanupMedia` = "off" (Impostazioni →
+ * Spazio): l'impostazione si legge qui, non alla programmazione, così
+ * disattivarla salva anche i media già marcati.
+ */
+export async function sweepReclaimableMedia(now = new Date()): Promise<number> {
+  const freed = new Map<number, { bytes: number; count: number }>();
+  for (const media of dueReclaimableMedia(now)) {
+    if (getSetting(media.userId, "autoCleanupMedia", "on") !== "on") continue;
+    deleteMediaSystem(media.id);
+    await deleteFile(media.filename);
+    const acc = freed.get(media.userId) ?? { bytes: 0, count: 0 };
+    freed.set(media.userId, { bytes: acc.bytes + media.size, count: acc.count + 1 });
+  }
+  let total = 0;
+  for (const [userId, { bytes, count }] of freed) {
+    total += count;
+    logger.info(
+      "media",
+      `Pulizia automatica: rimossi ${count} media dal disco (${(bytes / 1024 / 1024).toFixed(1)} MB liberati)`,
+      undefined,
+      userId
+    );
+  }
+  return total;
 }
 
 /**
@@ -191,6 +223,6 @@ export async function publishPost(
   const updated = getPostSystem(postId)!;
   const status = computePostStatus(updated.targets.map((t) => t.status));
   setPostStatus(postId, status);
-  if (status === "published") await cleanupPublishedMedia(updated);
+  if (status === "published") scheduleMediaCleanup(updated);
   return getPostSystem(postId);
 }

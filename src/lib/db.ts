@@ -66,6 +66,11 @@ CREATE TABLE IF NOT EXISTS media (
   size INTEGER NOT NULL,
   folder TEXT NOT NULL DEFAULT '',
   tags TEXT NOT NULL DEFAULT '',
+  -- Momento a partire dal quale il file puo' essere tolto dal disco: lo scrive
+  -- il publisher dopo una pubblicazione riuscita (pubblicazione + 24 h). NULL =
+  -- da conservare. Il ritardo esiste perche' cancellare subito toglieva il file
+  -- da sotto ai post gia' in coda per le altre piattaforme.
+  reclaim_at TEXT,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 
@@ -149,6 +154,7 @@ CREATE INDEX IF NOT EXISTS idx_posts_scheduled ON posts(scheduled_at);
 CREATE INDEX IF NOT EXISTS idx_targets_post ON post_targets(post_id);
 CREATE INDEX IF NOT EXISTS idx_targets_retry ON post_targets(status, next_retry_at);
 CREATE INDEX IF NOT EXISTS idx_media_user ON media(user_id);
+CREATE INDEX IF NOT EXISTS idx_media_reclaim ON media(reclaim_at);
 CREATE INDEX IF NOT EXISTS idx_templates_user ON templates(user_id);
 CREATE INDEX IF NOT EXISTS idx_lives_user ON lives(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
@@ -181,6 +187,9 @@ function migrate(db: Database.Database) {
   }
   if (tableExists(db, "media") && !hasColumn(db, "media", "user_id")) {
     db.exec("ALTER TABLE media ADD COLUMN user_id INTEGER");
+  }
+  if (tableExists(db, "media") && !hasColumn(db, "media", "reclaim_at")) {
+    db.exec("ALTER TABLE media ADD COLUMN reclaim_at TEXT");
   }
   if (tableExists(db, "logs") && !hasColumn(db, "logs", "user_id")) {
     db.exec("ALTER TABLE logs ADD COLUMN user_id INTEGER");

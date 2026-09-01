@@ -19,6 +19,14 @@ RUN npm run build
 
 # --- Fase 3: runtime minimale ---
 FROM node:24-alpine AS runner
+# ffmpeg di sistema: il binario di `ffmpeg-static` NON finisce nell'output
+# standalone di Next (il tracciamento dei file copia solo index.js e
+# package.json del pacchetto), quindi nell'immagine non esisteva alcun ffmpeg.
+# Conseguenza visibile: i fotogrammi di anteprima dei video non venivano mai
+# generati e la Libreria restava piena di riquadri vuoti; conversione e
+# repurpose fallivano con "ffmpeg non disponibile".
+# src/lib/video.ts cerca anche in /usr/bin, quindi basta installarlo qui.
+RUN apk add --no-cache ffmpeg
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1

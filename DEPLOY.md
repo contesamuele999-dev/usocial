@@ -295,12 +295,12 @@ cd ~/usocial && git pull && docker compose -f docker-compose.prod.yml up -d --bu
 ```
 
 3. **Caddy serve i media da sé**: il `docker-compose.prod.yml` monta `./data/media`
-   su `/srv/media` nel container di Caddy, che risponde a `/files/*` senza svegliare
+   su `/srv/files` nel container di Caddy, che risponde a `/files/*` senza svegliare
    Node. È una modifica al compose, quindi il container va **ricreato** (non basta
    riavviarlo) — il comando `up -d` qui sopra lo fa. Per controllare che funzioni:
 
 ```bash
-docker compose -f docker-compose.prod.yml exec caddy ls /srv/media
+docker compose -f docker-compose.prod.yml exec caddy ls /srv/files
 ```
 
 ---

@@ -94,6 +94,13 @@ export interface MediaItem {
   size: number;
   folder: string;
   tags: string;
+  /**
+   * Quando il file potrà essere tolto dal disco dalla pulizia automatica
+   * (ISO), oppure null se va conservato. Lo imposta il publisher dopo una
+   * pubblicazione riuscita, a 24 h di distanza: cancellare subito toglieva il
+   * media da sotto ai post già in coda per le altre piattaforme.
+   */
+  reclaimAt: string | null;
   createdAt: string;
 }
 

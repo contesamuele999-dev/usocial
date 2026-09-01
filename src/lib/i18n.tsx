@@ -387,9 +387,9 @@ const it = {
     tokenHint:
       "I token vengono rinnovati da soli ogni ora, quindi puoi programmare post anche a mesi di distanza. Eccezioni: TikTok richiede una riconnessione una volta l'anno; per YouTube l'app OAuth deve essere \"In produzione\" su Google Cloud (in \"Testing\" il token scade dopo 7 giorni); LinkedIn va riconnesso ogni 60 giorni.",
     storageTitle: "🧹 Spazio disco",
-    cleanupLabel: "Elimina i media dal disco dopo la pubblicazione",
+    cleanupLabel: "Elimina i media dal disco un giorno dopo la pubblicazione",
     cleanupDesc:
-      "Quando un post è stato pubblicato su tutte le piattaforme scelte, i suoi file vengono rimossi dalla libreria per liberare spazio. I media usati da bozze o post programmati non vengono mai toccati.",
+      "Quando un post è stato pubblicato su tutte le piattaforme scelte, i suoi file restano ancora 24 ore nella libreria e solo dopo vengono rimossi per liberare spazio. Il giorno di attesa serve a non togliere il media da sotto a un post per un'altra piattaforma programmato subito dopo. I media usati da bozze o post programmati non vengono mai toccati.",
     agentsTitle: "🤖 Agenti IA (API e MCP)",
     agentsDesc:
       "Crea una chiave per far caricare media e programmare post a Claude Code o altri agenti, dalla CLI. La chiave vale come la tua password: trattala come tale.",
@@ -928,9 +928,9 @@ const en: typeof it = {
     tokenHint:
       "Tokens are refreshed automatically every hour, so you can schedule posts months ahead. Exceptions: TikTok needs a yearly reconnect; for YouTube the OAuth app must be \"In production\" on Google Cloud (in \"Testing\" the token expires after 7 days); LinkedIn must be reconnected every 60 days.",
     storageTitle: "🧹 Disk space",
-    cleanupLabel: "Delete media from disk after publishing",
+    cleanupLabel: "Delete media from disk one day after publishing",
     cleanupDesc:
-      "Once a post is published on every selected platform, its files are removed from the library to free space. Media used by drafts or scheduled posts is never touched.",
+      "Once a post is published on every selected platform, its files stay in the library for another 24 hours and are removed only afterwards, to free space. The day of grace keeps the media available to a post for another platform scheduled right after. Media used by drafts or scheduled posts is never touched.",
     agentsTitle: "🤖 AI agents (API and MCP)",
     agentsDesc:
       "Create a key to let Claude Code or other agents upload media and schedule posts from the CLI. The key is as powerful as your password: treat it as such.",

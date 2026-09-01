@@ -44,7 +44,10 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       # Media in sola lettura: Caddy serve /files/* da qui senza passare da Node
       # (vedi Caddyfile). Stessa cartella montata su /app/data nell'app.
-      - ./data/media:/srv/media:ro
+      # Il nome della cartella dentro il container ("files") deve combaciare con
+      # il prefisso dell'URL: così Caddy trova il file senza riscrivere l'URI, e
+      # la richiesta che inoltra a Node per i poster mancanti resta /files/:nome.
+      - ./data/media:/srv/files:ro
       - caddy_data:/data # certificati TLS (persistenti)
       - caddy_config:/config
     networks:

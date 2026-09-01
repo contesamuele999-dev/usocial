@@ -1,7 +1,8 @@
 # uSocial — deploy di produzione con HTTPS automatico.
 #
-# Avvio sul server:
-#   docker compose -f docker-compose.prod.yml up -d --build
+# Deploy sul server (l'immagine e' gia' compilata da GitHub Actions):
+#   docker compose -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.prod.yml up -d
 #
 # Richiede nel file .env:
 #   APP_DOMAIN=iltuonome.duckdns.org        (dominio pubblico che punta al server)
@@ -11,7 +12,12 @@
 # L'app NON espone la porta 3000 su internet: passa solo da Caddy (80/443).
 services:
   usocial:
-    build: .
+    # Immagine costruita da .github/workflows/build.yml e pubblicata su
+    # ghcr.io a ogni push su main. La VM e2-micro non compila piu' nulla:
+    # `next build` su 1 GB di RAM andava in swap e ci metteva ore.
+    # Per tornare a una versione precedente basta sostituire :latest con
+    # lo SHA del commit desiderato.
+    image: ghcr.io/contesamuele999-dev/usocial:latest
     container_name: usocial
     env_file:
       - .env

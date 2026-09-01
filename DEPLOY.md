@@ -180,11 +180,25 @@ Salva con `Ctrl+O`, `Invio`, poi `Ctrl+X`.
 
 ## 8) Avviare l'app (HTTPS automatico)
 
+L'immagine Docker **non si compila sulla VM**: la costruisce GitHub Actions a ogni push su
+`main` (vedi `.github/workflows/build.yml`) e la pubblica su `ghcr.io`. Alla VM resta solo da
+scaricarla.
+
+Prima di questo passo, assicurati che il primo build sia andato a buon fine: apri la tab
+**Actions** del tuo repository su GitHub e aspetta il segno di spunta verde (pochi minuti).
+Poi, la prima volta, rendi pubblico il pacchetto: pagina del repository -> **Packages** ->
+`usocial` -> *Package settings* -> *Change visibility* -> **Public**. (Se preferisci tenerlo
+privato, sulla VM serve prima un `docker login ghcr.io` con un token che abbia lo scope
+`read:packages`.)
+
+Sulla VM:
+
 ```bash
-docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
 ```
 
-La prima build dura qualche minuto (con la swap attiva la e2-micro ce la fa senza problemi).
+Il download dura una trentina di secondi.
 Caddy ottiene da solo il certificato HTTPS. Controlla che sia tutto su:
 
 ```bash
@@ -195,10 +209,14 @@ docker compose -f docker-compose.prod.yml logs -f caddy   # Ctrl+C per uscire
 Apri nel browser: **https://umaster-social.duckdns.org** → sei online! 🎉
 Clicca **Registrati** e crea il tuo account.
 
-> Aggiornare l'app in futuro:
+> Aggiornare l'app in futuro (dopo aver pushato le modifiche e atteso il verde su Actions):
 > ```bash
-> cd usocial && git pull && docker compose -f docker-compose.prod.yml up -d --build
+> cd usocial
+> git pull
+> docker compose -f docker-compose.prod.yml pull
+> docker compose -f docker-compose.prod.yml up -d
 > ```
+> Trenta secondi in tutto. **Non usare mai `--build` su questa VM**: vedi il riquadro qui sotto.
 
 ---
 
@@ -256,11 +274,20 @@ Le versioni recenti di `Caddyfile` e `docker-compose.prod.yml` usano un **IP fis
 (`172.28.0.10`) proprio per togliere il DNS dal percorso. Se stai usando una versione
 vecchia, aggiorna il codice e ricrea i container.
 
-**Non lanciare `--build` sulla VM mentre l'app gira**: `next build` su 1 GB di RAM riempie
-la swap e blocca dockerd (è la causa più comune di questo 502). Ferma prima i container:
+**Non lanciare `--build` sulla VM, mai**, nemmeno a container fermi. `next build` vuole circa
+2 GB di RAM: su una e2-micro finisce tutto in swap, e siccome il disco Always Free e un HDD da
+poche decine di IOPS il processo resta ore in attesa di I/O (misurato: 4 ore per soli 3 minuti
+di CPU effettiva), con `load average` sopra 14, dockerd bloccato e lo scheduler che manda in
+errore le pubblicazioni programmate con `EAI_AGAIN`.
+
+Il build si fa su GitHub Actions, che e gratuito sui repository pubblici. Se ne trovi uno gia
+in corso sulla VM, fermalo:
 
 ```bash
-docker compose -f docker-compose.prod.yml down && docker compose -f docker-compose.prod.yml up -d --build
+sudo pkill -9 -f 'next build'
+sudo systemctl restart docker      # se `docker ps` resta appeso
+sudo docker start usocial          # il container viene ucciso dal riavvio di dockerd
+sudo docker builder prune -f       # recupera la cache dei build falliti (spesso alcuni GB)
 ```
 
 ---
@@ -291,7 +318,10 @@ Poi assicurati che siano vere entrambe queste cose:
    i video in streaming, senza tenerli in RAM. Aggiorna con:
 
 ```bash
-cd ~/usocial && git pull && docker compose -f docker-compose.prod.yml up -d --build
+cd ~/usocial
+git pull
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
 ```
 
 3. **Caddy serve i media da sé**: il `docker-compose.prod.yml` monta `./data/media`

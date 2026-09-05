@@ -196,6 +196,12 @@ export function fmtDate(iso: string | null): string {
   });
 }
 
+/** Solo giorno e mese: sull'asse di un grafico l'ora è solo rumore. */
+export function fmtDay(iso: string | null): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString(dateLocale, { day: "2-digit", month: "short" });
+}
+
 /** Solo orario HH:MM. */
 export function fmtTime(iso: string | null): string {
   if (!iso) return "";

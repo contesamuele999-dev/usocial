@@ -26,6 +26,7 @@ import type { Account } from "@/types";
 import {
   apiFetch,
   type CreatorInfo,
+  type PostMetrics,
   type PublishInput,
   type PublishMedia,
   type PublishResult,
@@ -357,7 +358,16 @@ export const tiktokModule: SocialModule = {
   oauth: {
     authorizeUrl: "https://www.tiktok.com/v2/auth/authorize/",
     tokenUrl: `${API}/oauth/token/`,
-    scopes: ["user.info.basic", "video.publish", "video.upload"],
+    // `video.list` serve SOLO alla pagina Statistiche e va abilitato anche
+    // nell'app su developers.tiktok.com: se lo chiedessimo sempre, chi non
+    // l'ha attivato si vedrebbe rifiutare la schermata di consenso e non
+    // potrebbe più collegare TikTok. Quindi è opt-in dal file .env.
+    scopes: [
+      "user.info.basic",
+      "video.publish",
+      "video.upload",
+      ...(process.env.TIKTOK_SCOPE_VIDEO_LIST === "true" ? ["video.list"] : []),
+    ],
     clientIdParam: "client_key",
     scopeSeparator: ",",
   },
@@ -443,6 +453,39 @@ export const tiktokModule: SocialModule = {
     } catch (err) {
       return { ok: false, message: String(err) };
     }
+  },
+
+  /**
+   * Metriche di un video pubblicato (scope `video.list`).
+   * L'id restituito dal Direct Post è quello del video: si interroga
+   * `video/query` filtrando su quell'id.
+   */
+  async insights(account: Account, externalId: string): Promise<PostMetrics> {
+    if (account.scopes && !account.scopes.includes("video.list")) {
+      throw new Error(
+        "TikTok: statistiche non disponibili senza il permesso video.list. Attivalo nell'app su developers.tiktok.com, metti TIKTOK_SCOPE_VIDEO_LIST=true nel .env e ricollega l'account."
+      );
+    }
+    const res = await apiFetch(
+      `${API}/video/query/?fields=id,like_count,comment_count,share_count,view_count`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${account.accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ filters: { video_ids: [externalId] } }),
+      }
+    );
+    const videos = (res.data as { videos?: Record<string, number>[] } | undefined)?.videos || [];
+    const v = videos[0];
+    if (!v) throw new Error("TikTok: video non trovato (può essere stato eliminato).");
+    return {
+      views: v.view_count,
+      likes: v.like_count,
+      comments: v.comment_count,
+      shares: v.share_count,
+    };
   },
 
   async refresh(account: Account) {

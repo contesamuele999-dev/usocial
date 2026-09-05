@@ -3,7 +3,7 @@
  * Per aggiungere una piattaforma: creare src/social/<nome>/index.ts
  * che esporta un `SocialModule` e registrarlo in src/social/registry.ts.
  */
-import type { Account, Platform, TargetOptions } from "@/types";
+import type { Account, Platform, PostTarget, TargetOptions } from "@/types";
 
 /** Token restituiti dallo scambio OAuth. */
 export interface TokenSet {
@@ -105,6 +105,28 @@ export interface PlatformLimits {
   postTypes?: string[];
 }
 
+/**
+ * Metriche di un post, normalizzate fra piattaforme.
+ * Ogni campo è opzionale: quello che la piattaforma non espone resta assente
+ * (≠ zero), così la pagina Statistiche può scrivere "non disponibile" invece
+ * di far sembrare che un post non abbia avuto visualizzazioni.
+ */
+export interface PostMetrics {
+  /** Visualizzazioni / impression (il nome cambia per piattaforma, il senso no). */
+  views?: number;
+  /** Account unici raggiunti, dove la piattaforma lo distingue dalle views. */
+  reach?: number;
+  likes?: number;
+  comments?: number;
+  shares?: number;
+  /** Salvataggi (Instagram) o preferiti. */
+  saves?: number;
+  /** Click sul post o sul link. */
+  clicks?: number;
+  /** Follower dell'account al momento della lettura: serve per il tasso di engagement. */
+  followers?: number;
+}
+
 export interface VerifyResult {
   ok: boolean;
   message: string;
@@ -127,6 +149,13 @@ export interface SocialModule {
   creatorInfo?(account: Account): Promise<CreatorInfo>;
   /** Rinnova il token (solo per piattaforme con refresh token). */
   refresh?(account: Account): Promise<TokenSet | null>;
+  /**
+   * Metriche di un post già pubblicato (`externalId` è l'id restituito da
+   * `publish`). Assente = la piattaforma non espone statistiche utilizzabili.
+   * Può lanciare: la pagina Statistiche registra l'errore e mostra il post
+   * senza numeri, invece di fallire in blocco.
+   */
+  insights?(account: Account, externalId: string, target?: PostTarget): Promise<PostMetrics>;
 }
 
 /** Helper: fetch con errore leggibile se la risposta non è 2xx. */

@@ -17,6 +17,12 @@ const TOKEN_INTERVAL_MS = 3600_000;
  * sta in `MEDIA_RECLAIM_DELAY_MS`: qui si decide solo ogni quanto guardare.
  */
 const CLEANUP_INTERVAL_MS = 3600_000;
+/**
+ * Ogni 6 ore si rileggono le metriche dei post pubblicati. Non più spesso: le
+ * API di Instagram e Facebook hanno un tetto di chiamate per ora e i numeri di
+ * un post non cambiano abbastanza da giustificare di bruciarlo.
+ */
+const STATS_INTERVAL_MS = 6 * 3600_000;
 
 export function startScheduler() {
   const g = globalThis as unknown as { __usocialScheduler?: boolean };
@@ -85,6 +91,22 @@ export function startScheduler() {
   };
   setInterval(cleanupTick, CLEANUP_INTERVAL_MS);
   setTimeout(cleanupTick, 30_000);
+
+  // Statistiche: la pagina legge solo dal DB, quindi qualcuno deve riempirlo
+  // anche quando l'utente non la apre mai (e i numeri di un post crescono
+  // soprattutto nelle prime ore, quando nessuno sta guardando).
+  const statsTick = async () => {
+    try {
+      const { allAccountsSystem } = await import("./repo");
+      const { refreshMetrics } = await import("./stats");
+      const users = [...new Set(allAccountsSystem().map((a) => a.userId))];
+      for (const userId of users) await refreshMetrics(userId);
+    } catch (err) {
+      logger.error("scheduler", "Errore nell'aggiornamento delle statistiche", String(err));
+    }
+  };
+  setInterval(statsTick, STATS_INTERVAL_MS);
+  setTimeout(statsTick, 120_000); // due minuti dopo l'avvio: prima si pubblica
 }
 
 /** Rimette in coda i target rimasti in "publishing" (interrotti da un riavvio). */

@@ -940,3 +940,168 @@ export function exportAll(userId: number) {
       .all(userId),
   };
 }
+
+// ---------- METRICHE (statistiche dei post pubblicati) ----------
+
+/** Un target pubblicato di cui si possono leggere le metriche dalla piattaforma. */
+export interface MetricTarget {
+  targetId: number;
+  postId: number;
+  userId: number;
+  platform: Platform;
+  externalId: string;
+  publishedAt: string;
+}
+
+/**
+ * Target pubblicati (con id esterno) dopo `sinceIso`, per cui ha senso
+ * interrogare la piattaforma. Serve al refresh delle statistiche.
+ */
+export function metricTargets(sinceIso: string, userId?: number): MetricTarget[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT t.id AS target_id, t.post_id, p.user_id, t.platform, t.external_id, t.published_at
+         FROM post_targets t
+         JOIN posts p ON p.id = t.post_id
+        WHERE t.status = 'published'
+          AND t.external_id IS NOT NULL AND t.external_id != ''
+          AND t.published_at >= ?
+          ${userId ? "AND p.user_id = ?" : ""}
+        ORDER BY t.published_at DESC`
+    )
+    .all(...(userId ? [sinceIso, userId] : [sinceIso])) as Record<string, unknown>[];
+  return rows.map((r) => ({
+    targetId: r.target_id as number,
+    postId: r.post_id as number,
+    userId: r.user_id as number,
+    platform: r.platform as Platform,
+    externalId: r.external_id as string,
+    publishedAt: r.published_at as string,
+  }));
+}
+
+/** Metriche salvate per un post pubblicato, così come le legge la pagina Statistiche. */
+export interface MetricRow {
+  targetId: number;
+  postId: number;
+  platform: Platform;
+  title: string;
+  body: string;
+  hashtags: string;
+  postType: string | null;
+  externalUrl: string | null;
+  publishedAt: string;
+  /** Quanti media aveva il post e di che tipo (serve a confrontare i formati). */
+  mediaCount: number;
+  hasVideo: boolean;
+  views: number | null;
+  reach: number | null;
+  likes: number | null;
+  comments: number | null;
+  shares: number | null;
+  saves: number | null;
+  clicks: number | null;
+  followers: number | null;
+  error: string | null;
+  fetchedAt: string | null;
+}
+
+/**
+ * Scrive (o sovrascrive) la fotografia delle metriche di un target.
+ * `metrics` a null = la lettura è fallita: si conserva solo il motivo.
+ */
+export function saveMetrics(
+  target: MetricTarget,
+  metrics: Partial<Record<
+    "views" | "reach" | "likes" | "comments" | "shares" | "saves" | "clicks" | "followers",
+    number | undefined
+  >> | null,
+  error?: string
+): void {
+  const m = metrics || {};
+  const num = (v: number | undefined) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  getDb()
+    .prepare(
+      `INSERT INTO post_metrics
+         (target_id, post_id, user_id, platform, views, reach, likes, comments, shares, saves,
+          clicks, followers, error, fetched_at)
+       VALUES (@targetId, @postId, @userId, @platform, @views, @reach, @likes, @comments, @shares,
+               @saves, @clicks, @followers, @error, @fetchedAt)
+       ON CONFLICT(target_id) DO UPDATE SET
+         views = excluded.views, reach = excluded.reach, likes = excluded.likes,
+         comments = excluded.comments, shares = excluded.shares, saves = excluded.saves,
+         clicks = excluded.clicks, followers = excluded.followers,
+         error = excluded.error, fetched_at = excluded.fetched_at`
+    )
+    .run({
+      targetId: target.targetId,
+      postId: target.postId,
+      userId: target.userId,
+      platform: target.platform,
+      views: num(m.views),
+      reach: num(m.reach),
+      likes: num(m.likes),
+      comments: num(m.comments),
+      shares: num(m.shares),
+      saves: num(m.saves),
+      clicks: num(m.clicks),
+      followers: num(m.followers),
+      error: error ? error.slice(0, 500) : null,
+      fetchedAt: new Date().toISOString(),
+    });
+}
+
+/**
+ * Tutti i post pubblicati dell'utente nel periodo, con le metriche note.
+ * Il LEFT JOIN è voluto: un post appena pubblicato compare comunque, con i
+ * numeri vuoti, così l'utente vede che esiste e che i dati devono ancora arrivare.
+ */
+export function metricRows(userId: number, sinceIso: string): MetricRow[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT t.id AS target_id, t.post_id, t.platform, t.post_type, t.external_url,
+              t.published_at, p.title, p.body, p.hashtags,
+              m.views, m.reach, m.likes, m.comments, m.shares, m.saves, m.clicks,
+              m.followers, m.error, m.fetched_at,
+              (SELECT COUNT(*) FROM post_media pm WHERE pm.post_id = p.id) AS media_count,
+              (SELECT COUNT(*) FROM post_media pm JOIN media md ON md.id = pm.media_id
+                WHERE pm.post_id = p.id AND md.mime LIKE 'video/%') AS video_count
+         FROM post_targets t
+         JOIN posts p ON p.id = t.post_id
+         LEFT JOIN post_metrics m ON m.target_id = t.id
+        WHERE p.user_id = ? AND t.status = 'published' AND t.published_at >= ?
+        ORDER BY t.published_at DESC`
+    )
+    .all(userId, sinceIso) as Record<string, unknown>[];
+  return rows.map((r) => ({
+    targetId: r.target_id as number,
+    postId: r.post_id as number,
+    platform: r.platform as Platform,
+    title: (r.title as string) || "",
+    body: (r.body as string) || "",
+    hashtags: (r.hashtags as string) || "",
+    postType: (r.post_type as string | null) ?? null,
+    externalUrl: (r.external_url as string | null) ?? null,
+    publishedAt: r.published_at as string,
+    mediaCount: (r.media_count as number) || 0,
+    hasVideo: ((r.video_count as number) || 0) > 0,
+    views: (r.views as number | null) ?? null,
+    reach: (r.reach as number | null) ?? null,
+    likes: (r.likes as number | null) ?? null,
+    comments: (r.comments as number | null) ?? null,
+    shares: (r.shares as number | null) ?? null,
+    saves: (r.saves as number | null) ?? null,
+    clicks: (r.clicks as number | null) ?? null,
+    followers: (r.followers as number | null) ?? null,
+    error: (r.error as string | null) ?? null,
+    fetchedAt: (r.fetched_at as string | null) ?? null,
+  }));
+}
+
+/** Momento dell'ultimo aggiornamento delle metriche dell'utente (ISO), se c'è. */
+export function lastMetricsFetch(userId: number): string | null {
+  const row = getDb()
+    .prepare("SELECT MAX(fetched_at) AS last FROM post_metrics WHERE user_id = ?")
+    .get(userId) as { last: string | null } | undefined;
+  return row?.last ?? null;
+}

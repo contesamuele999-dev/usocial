@@ -11,6 +11,7 @@ import { AppError } from "@/lib/errors";
 import { withUser } from "@/lib/api";
 import { createMedia, listFolders, listMedia, mediaPendingUsage } from "@/lib/repo";
 import { saveFile, saveStream } from "@/lib/storage";
+import { warmPoster } from "@/lib/poster";
 import { assertQuota, getQuota } from "@/lib/quota";
 import { logger } from "@/lib/logger";
 
@@ -71,6 +72,7 @@ function respond(
     undefined,
     userId
   );
+  warmPoster(data.filename, data.mime, userId);
   // la quota aggiornata torna insieme al media: la UI aggiorna la barra senza
   // dover fare una seconda richiesta
   return NextResponse.json({ ...item, quota: getQuota(userId) }, { status: 201 });

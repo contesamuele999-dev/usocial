@@ -17,7 +17,7 @@ import fs from "node:fs";
 import { NotFoundError, withErrorHandling } from "@/lib/errors";
 import { mimeFromExt, serveFile } from "@/lib/serve";
 import { ensureMediaDir, filePath, posterFilename } from "@/lib/storage";
-import { extractPoster } from "@/lib/video";
+import { extractPoster, type PosterResult } from "@/lib/video";
 import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
@@ -31,9 +31,9 @@ const POSTER_SUFFIX = ".poster.jpg";
  * la griglia chiede lo stesso poster più volte in parallelo. Su una VM con 2
  * vCPU condivise questo è ciò che separa un'attesa breve da un blocco.
  */
-const generating = new Map<string, Promise<boolean>>();
+const generating = new Map<string, Promise<PosterResult>>();
 
-function posterOnce(source: string, output: string): Promise<boolean> {
+function posterOnce(source: string, output: string): Promise<PosterResult> {
   const inFlight = generating.get(output);
   if (inFlight) return inFlight;
   const job = extractPoster(source, output).finally(() => generating.delete(output));
@@ -60,12 +60,14 @@ async function ensurePoster(name: string): Promise<boolean> {
   }
 
   await ensureMediaDir();
-  const ok = await posterOnce(source, output);
-  if (!ok) {
+  const res = await posterOnce(source, output);
+  if (!res.ok) {
     // ffmpeg assente o video illeggibile: la UI ripiega su un riquadro neutro.
-    logger.warn("media", `Poster non generato per ${sourceName}`);
+    // Il motivo va nel log (Cronologia → Log): senza, l'unico sintomo era una
+    // griglia di riquadri vuoti, senza modo di sapere perché.
+    logger.warn("media", `Poster non generato per ${sourceName}`, res.error);
   }
-  return ok;
+  return res.ok;
 }
 
 const handler = withErrorHandling<Ctx>("media", async (req, { params }) => {

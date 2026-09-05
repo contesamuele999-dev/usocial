@@ -5,7 +5,14 @@
  * raggiungibile da internet (es. tramite tunnel/reverse proxy) per pubblicare media.
  */
 import type { Account } from "@/types";
-import { apiFetch, type PublishInput, type PublishResult, type SocialModule, type TokenSet } from "../types";
+import {
+  apiFetch,
+  type PostMetrics,
+  type PublishInput,
+  type PublishResult,
+  type SocialModule,
+  type TokenSet,
+} from "../types";
 import { env } from "@/lib/env";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
@@ -53,6 +60,9 @@ export const instagramModule: SocialModule = {
     scopes: [
       "instagram_basic",
       "instagram_content_publish",
+      // Serve alla pagina Statistiche. È lo stesso permesso che Meta concede
+      // insieme agli altri: aggiungerlo obbliga però a ricollegare l'account.
+      "instagram_manage_insights",
       "pages_show_list",
       "business_management",
     ],
@@ -165,6 +175,52 @@ export const instagramModule: SocialModule = {
     } catch (err) {
       return { ok: false, message: String(err) };
     }
+  },
+
+  /**
+   * Metriche di un post Instagram.
+   *
+   * Due chiamate perché la Graph API le tiene separate: i contatori pubblici
+   * (like, commenti) stanno sul media, le metriche di copertura sotto
+   * `/insights`. Le seconde possono fallire da sole (un post più vecchio del
+   * permesso, un formato senza insight): in quel caso si restituiscono
+   * comunque like e commenti invece di perdere tutto.
+   */
+  async insights(account: Account, externalId: string): Promise<PostMetrics> {
+    const { igUserId, token } = igAuth(account);
+    const out: PostMetrics = {};
+
+    const base = await apiFetch(
+      `${GRAPH}/${externalId}?fields=like_count,comments_count&access_token=${token}`
+    );
+    out.likes = (base.like_count as number) ?? undefined;
+    out.comments = (base.comments_count as number) ?? undefined;
+
+    try {
+      // `views` ha sostituito `impressions`, deprecata per i contenuti creati
+      // dopo luglio 2024: chiederla ancora farebbe fallire tutta la chiamata.
+      const res = await apiFetch(
+        `${GRAPH}/${externalId}/insights?metric=views,reach,saved,shares&access_token=${token}`
+      );
+      const data = (res.data as { name: string; values?: { value: number }[] }[]) || [];
+      const val = (n: string) => data.find((d) => d.name === n)?.values?.[0]?.value;
+      out.views = val("views");
+      out.reach = val("reach");
+      out.saves = val("saved");
+      out.shares = val("shares");
+    } catch {
+      /* insight non disponibili per questo media: restano like e commenti */
+    }
+
+    try {
+      const prof = await apiFetch(
+        `${GRAPH}/${igUserId}?fields=followers_count&access_token=${token}`
+      );
+      out.followers = (prof.followers_count as number) ?? undefined;
+    } catch {
+      /* niente follower: il tasso di engagement non verrà calcolato */
+    }
+    return out;
   },
 
   /** Come Facebook: il token long-lived si estende riscambiandolo (vedi social/tokens.ts). */

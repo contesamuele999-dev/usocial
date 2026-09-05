@@ -4,7 +4,14 @@
  * Il refresh token viene ottenuto con access_type=offline&prompt=consent.
  */
 import type { Account } from "@/types";
-import { apiFetch, type PublishInput, type PublishResult, type SocialModule, type TokenSet } from "../types";
+import {
+  apiFetch,
+  type PostMetrics,
+  type PublishInput,
+  type PublishResult,
+  type SocialModule,
+  type TokenSet,
+} from "../types";
 import { refreshWithToken } from "../oauth";
 import { fileBody } from "../upload";
 
@@ -110,6 +117,38 @@ export const youtubeModule: SocialModule = {
     } catch (err) {
       return { ok: false, message: String(err) };
     }
+  },
+
+  /**
+   * Statistiche pubbliche del video + iscritti del canale.
+   * Bastano gli scope già chiesti alla connessione (`youtube.readonly`).
+   */
+  async insights(account: Account, externalId: string): Promise<PostMetrics> {
+    const headers = { Authorization: `Bearer ${account.accessToken}` };
+    const res = await apiFetch(
+      `https://www.googleapis.com/youtube/v3/videos?part=statistics&id=${encodeURIComponent(externalId)}`,
+      { headers }
+    );
+    const item = (res.items as { statistics?: Record<string, string> }[] | undefined)?.[0];
+    if (!item) throw new Error("YouTube: video non trovato (rimosso o reso privato).");
+    const st = item.statistics || {};
+    const num = (v: string | undefined) => (v === undefined ? undefined : Number(v));
+    const out: PostMetrics = {
+      views: num(st.viewCount),
+      likes: num(st.likeCount),
+      comments: num(st.commentCount),
+    };
+    try {
+      const ch = await apiFetch(
+        "https://www.googleapis.com/youtube/v3/channels?part=statistics&mine=true",
+        { headers }
+      );
+      const chan = (ch.items as { statistics?: Record<string, string> }[] | undefined)?.[0];
+      out.followers = num(chan?.statistics?.subscriberCount);
+    } catch {
+      /* iscritti non leggibili: il tasso di engagement non verrà calcolato */
+    }
+    return out;
   },
 
   async refresh(account: Account) {

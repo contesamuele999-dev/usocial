@@ -36,6 +36,9 @@ export const env = {
     const map: Record<string, [string, string]> = {
       facebook: ["META_CLIENT_ID", "META_CLIENT_SECRET"],
       instagram: ["META_CLIENT_ID", "META_CLIENT_SECRET"],
+      // Threads ha id e segreto PROPRI (caso d'uso "Threads API" dell'app Meta):
+      // usare qui META_CLIENT_ID fa fallire lo scambio del token.
+      threads: ["THREADS_CLIENT_ID", "THREADS_CLIENT_SECRET"],
       linkedin: ["LINKEDIN_CLIENT_ID", "LINKEDIN_CLIENT_SECRET"],
       youtube: ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"],
       tiktok: ["TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET"],

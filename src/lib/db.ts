@@ -148,6 +148,29 @@ CREATE TABLE IF NOT EXISTS lives (
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 
+-- Ultima fotografia delle metriche di un post pubblicato, una riga per
+-- piattaforma. Non e' uno storico: la pagina Statistiche mette in relazione i
+-- numeri con la DATA DI PUBBLICAZIONE, quindi l'andamento nel tempo si ricava
+-- gia' da qui e il DB resta piccolo (la VM ha un disco condiviso).
+-- La colonna error conserva il motivo per cui una lettura non e' riuscita:
+-- senza, un post senza numeri e uno con zero visualizzazioni sono uguali.
+CREATE TABLE IF NOT EXISTS post_metrics (
+  target_id INTEGER PRIMARY KEY REFERENCES post_targets(id) ON DELETE CASCADE,
+  post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  user_id INTEGER,
+  platform TEXT NOT NULL,
+  views INTEGER,
+  reach INTEGER,
+  likes INTEGER,
+  comments INTEGER,
+  shares INTEGER,
+  saves INTEGER,
+  clicks INTEGER,
+  followers INTEGER,
+  error TEXT,
+  fetched_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_posts_user ON posts(user_id);
 CREATE INDEX IF NOT EXISTS idx_posts_status ON posts(status);
 CREATE INDEX IF NOT EXISTS idx_posts_scheduled ON posts(scheduled_at);
@@ -161,6 +184,8 @@ CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_logs_created ON logs(created_at);
 CREATE INDEX IF NOT EXISTS idx_post_media_media ON post_media(media_id);
 CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys(user_id);
+CREATE INDEX IF NOT EXISTS idx_metrics_user ON post_metrics(user_id);
+CREATE INDEX IF NOT EXISTS idx_metrics_post ON post_metrics(post_id);
 `;
 
 function tableExists(db: Database.Database, table: string): boolean {

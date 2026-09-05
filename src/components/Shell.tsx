@@ -17,6 +17,7 @@ const NAV = [
   { href: "/studio", key: "nav.studio", icon: "🧠" },
   { href: "/calendar", key: "nav.calendar", icon: "🗓️" },
   { href: "/media", key: "nav.media", icon: "🖼️" },
+  { href: "/stats", key: "nav.stats", icon: "📈" },
   { href: "/history", key: "nav.history", icon: "📜" },
   { href: "/settings", key: "nav.settings", icon: "⚙️" },
 ];

@@ -11,6 +11,8 @@ const PLATFORM_STYLE: Record<Platform, string> = {
     "Tono colloquiale e coinvolgente, paragrafi brevi, emoji con moderazione, invito alla conversazione.",
   instagram:
     "Prima riga fortissima (hook), paragrafi brevissimi separati da riga vuota, emoji, max 2200 caratteri, chiudi con CTA e hashtag.",
+  threads:
+    "Conversazionale e diretto, come un pensiero detto a voce: max 500 caratteri, una sola idea, niente muro di hashtag.",
   tiktok:
     "Caption breve e diretta, linguaggio giovane, max 150 caratteri per il titolo, hook immediato.",
   youtube:

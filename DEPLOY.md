@@ -292,6 +292,84 @@ sudo docker builder prune -f       # recupera la cache dei build falliti (spesso
 
 ---
 
+## La VM si blocca: `load average` altissimo e `docker ps` appeso
+
+Sintomo: il sito non risponde, `docker ps` resta appeso, `uptime` mostra un `load average`
+sopra 10 (misurati anche 48) ma `ps aux` non mostra nessun processo che consuma CPU. Nel
+`dmesg` compaiono `blk_mq_run_work_fn hogged CPU` e `Under memory pressure, flushing caches`,
+**senza** nessun `Out of memory: Killed process`.
+
+Non e la RAM: e il **disco**. Il persistent disk *standard* del free tier e un HDD di rete le
+cui prestazioni scalano con la dimensione: su 30 GB fa circa **20 IOPS in lettura e 3,5 MB/s**.
+Basta poco a saturarlo — un riavvio con tutti i servizi che partono insieme, un `apt-get
+update` in sottofondo, o anche solo ffmpeg che estrae la miniatura di un video — e da li in
+poi ogni processo finisce in coda in stato `D` (I/O wait). Il `load average` conta anche quelli,
+per questo esplode senza che nulla stia davvero calcolando.
+
+### Sbloccarla
+
+```bash
+sudo pkill -9 ffmpeg; sudo pkill -9 apt-get
+sudo systemctl stop apt-daily.timer apt-daily-upgrade.timer unattended-upgrades
+uptime; vmstat 1 5     # nella colonna `wa`: sopra 50 sei ancora nel tunnel, sotto 10 e passata
+```
+
+Quando `wa` e rientrata:
+
+```bash
+sudo systemctl restart docker
+sudo docker start usocial       # il riavvio di dockerd uccide il container (exit 137)
+sudo docker ps; curl -s -o /dev/null -w '%{http_code}
+' http://172.28.0.10:3000
+```
+
+### Ridurre la pressione sul disco (una volta sola)
+
+Non elimina il problema — il disco resta quello — ma abbassa parecchio la frequenza degli
+episodi.
+
+```bash
+# 1) niente aggiornamenti automatici in sottofondo (vedi avvertenza sotto)
+sudo systemctl disable --now apt-daily.timer apt-daily-upgrade.timer unattended-upgrades
+
+# 2) swap solo sotto vera pressione, e cache dei metadati tenuta piu a lungo
+printf 'vm.swappiness=10
+vm.vfs_cache_pressure=50
+' | sudo tee /etc/sysctl.d/99-usocial.conf
+sudo sysctl --system
+
+# 3) journal di sistema limitato (scriveva in continuazione)
+sudo mkdir -p /etc/systemd/journald.conf.d
+printf '[Journal]
+SystemMaxUse=50M
+RuntimeMaxUse=16M
+' | sudo tee /etc/systemd/journald.conf.d/99-usocial.conf
+sudo systemctl restart systemd-journald
+
+# 4) rotazione dei log dei container (altrimenti crescono all'infinito)
+printf '{
+  "log-driver": "json-file",
+  "log-opts": { "max-size": "10m", "max-file": "3" }
+}
+' | sudo tee /etc/docker/daemon.json
+sudo systemctl restart docker && sudo docker start usocial
+```
+
+> ⚠️ Il punto 1 disattiva gli **aggiornamenti di sicurezza automatici**, e la VM e esposta su
+> internet. Falli a mano una volta al mese, quando puoi tenere d'occhio la macchina:
+> ```bash
+> sudo apt update && sudo apt upgrade -y && sudo reboot
+> ```
+
+### La soluzione definitiva (a pagamento, ~3-4 euro al mese)
+
+Cambiare il disco di boot da *standard* a **balanced** (SSD): stessi 30 GB, ma circa 3.000 IOPS
+invece di 20. Si fa dalla console Google Cloud con la VM spenta e non si perdono i dati. Esce
+dal free tier, ma elimina in un colpo solo i 502, le miniature che non si generano e questi
+blocchi.
+
+---
+
 ## Il sito non risponde più dopo aver caricato un video
 
 Su una VM da 1 GB (e2-micro) la causa quasi sempre è la **memoria esaurita**: il kernel

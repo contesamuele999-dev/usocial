@@ -8,6 +8,7 @@ import type { Platform } from "@/types";
 import type { SocialModule } from "./types";
 import { facebookModule } from "./facebook";
 import { instagramModule } from "./instagram";
+import { threadsModule } from "./threads";
 import { tiktokModule } from "./tiktok";
 import { youtubeModule } from "./youtube";
 import { linkedinModule } from "./linkedin";
@@ -15,6 +16,7 @@ import { linkedinModule } from "./linkedin";
 const modules: Record<Platform, SocialModule> = {
   facebook: facebookModule,
   instagram: instagramModule,
+  threads: threadsModule,
   tiktok: tiktokModule,
   youtube: youtubeModule,
   linkedin: linkedinModule,

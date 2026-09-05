@@ -1,7 +1,8 @@
 # 🚀 uSocial — Social Publisher AI
 
 Strumento per scrivere un contenuto una sola volta e pubblicarlo contemporaneamente su
-**Facebook, Instagram, TikTok, YouTube e LinkedIn** usando esclusivamente le API ufficiali.
+**Facebook, Instagram, Threads, TikTok, YouTube e LinkedIn** usando esclusivamente le API
+ufficiali.
 
 **Multi-utente con login**: ogni utente ha i propri post, media e account social, che
 collega da sé con un click dalla web app. Niente abbonamenti, niente ruoli, niente
@@ -26,6 +27,10 @@ enterprise: solo un software leggero, veloce e facilmente estendibile.
   **Ollama** (locale).
 - **Calendario** — vista mensile, drag & drop per riprogrammare, duplicazione, filtro piattaforma.
 - **Libreria media** — upload drag & drop, ricerca, tag, cartelle, anteprima.
+- **Statistiche** — visualizzazioni e interazioni dei post già pubblicati, andamento nel
+  periodo, confronto fra piattaforme, post migliori e peggiori, e **consigli ricavati dai
+  tuoi dati** (giorno e fascia oraria che rendono di più, formato vincente, quantità di
+  hashtag, costanza di pubblicazione). I numeri si rileggono da soli ogni 6 ore.
 - **Cronologia** — storico pubblicazioni, errori API, tentativi, log completi.
 - **Impostazioni** — connessione OAuth degli account, verifica token, disconnessione,
   configurazione AI, backup/esportazione JSON.
@@ -95,6 +100,7 @@ account da **Impostazioni → Connetti**.
 |---|---|---|
 | Facebook | [developers.facebook.com](https://developers.facebook.com) | `{APP_URL}/api/connect/facebook/callback` |
 | Instagram | stessa app Meta | `{APP_URL}/api/connect/instagram/callback` |
+| Threads | stessa app Meta, caso d'uso **Threads API** (credenziali proprie) | `{APP_URL}/api/connect/threads/callback` |
 | LinkedIn | [developer.linkedin.com](https://developer.linkedin.com) | `{APP_URL}/api/connect/linkedin/callback` |
 | YouTube | [console.cloud.google.com](https://console.cloud.google.com) | `{APP_URL}/api/connect/youtube/callback` |
 | TikTok | [developers.tiktok.com](https://developers.tiktok.com) | `{APP_URL}/api/connect/tiktok/callback` |
@@ -102,10 +108,10 @@ account da **Impostazioni → Connetti**.
 Le credenziali nel `.env` sono a livello di **app**: un solo set serve tutti gli utenti,
 e ciascuno autorizza il proprio account dal browser (nessuna chiave da condividere).
 
-### ⚠️ Nota su Instagram e i media
+### ⚠️ Nota su Instagram, Threads e i media
 
-Instagram (e in parte Facebook) **scarica i media da un URL pubblico**: per pubblicare
-immagini/video su Instagram, `APP_URL` deve essere raggiungibile da internet
+Instagram e Threads (e in parte Facebook) **scaricano i media da un URL pubblico**: per
+pubblicare immagini/video, `APP_URL` deve essere raggiungibile da internet
 (es. reverse proxy, Cloudflare Tunnel, ngrok). Testo, bozze e tutto il resto funzionano
 anche in locale.
 
@@ -180,6 +186,7 @@ utente e operano **solo** sui dati dell'utente loggato.
 | POST | `/api/posts/:id/adapt` | adatta il testo con l'AI per ogni piattaforma |
 | GET/POST | `/api/media` | libreria / upload |
 | POST | `/api/ai` | azioni AI ad hoc |
+| GET/POST | `/api/stats` | statistiche dei post pubblicati (POST = rilegge i numeri dalle piattaforme) |
 | GET | `/api/platforms` | piattaforme + stato connessione |
 | GET | `/api/connect/:platform` | avvia OAuth per collegare un account all'utente |
 | POST/DELETE | `/api/accounts/:platform` | verifica token / disconnetti |
@@ -264,6 +271,7 @@ piattaforme:
 | Piattaforma | Durata | Cosa serve |
 |---|---|---|
 | Facebook / Instagram | token long-lived 60 giorni, esteso a ogni rinnovo | niente |
+| Threads | token long-lived 60 giorni, rinnovabile dopo le prime 24 h | niente |
 | YouTube | access token 1 h, refresh token permanente | l'app OAuth deve essere **"In produzione"** su Google Cloud: in "Testing" il refresh token scade dopo 7 giorni |
 | TikTok | access token 24 h, refresh token 365 giorni | riconnessione una volta l'anno |
 | LinkedIn | 60 giorni, senza refresh token | riconnessione ogni 60 giorni |

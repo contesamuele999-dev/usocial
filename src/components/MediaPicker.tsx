@@ -28,27 +28,50 @@ export function posterUrl(m: MediaItem): string {
   return `/files/${encodeURIComponent(m.filename)}.poster.jpg`;
 }
 
+/** Quanto si aspetta prima di richiedere un poster che il server sta generando. */
+const POSTER_RETRY_MS = 3000;
+
 export function MediaThumb({ item, className = "" }: { item: MediaItem; className?: string }) {
   const isVideo = item.mime.startsWith("video/");
-  // Il poster manca se ffmpeg non è disponibile sul server o il video è
-  // illeggibile: in quel caso un riquadro neutro, non un download da 100 MB.
-  const [noPoster, setNoPoster] = useState(false);
+  /**
+   * 0 = primo tentativo, 1 = ritentativo, 2 = rinuncia.
+   *
+   * Il ritentativo serve perché il poster di un video mai visto prima viene
+   * creato DURANTE la prima richiesta: quella risponde 404 e senza un secondo
+   * tentativo il riquadro restava 🎬 fino a un ricaricamento a mano — cioè
+   * proprio al primo sguardo alla Libreria, quando l'impressione conta.
+   */
+  const [attempt, setAttempt] = useState(0);
 
-  if (isVideo && noPoster) {
+  useEffect(() => {
+    if (attempt !== 1) return;
+    const id = setTimeout(() => setAttempt(2), POSTER_RETRY_MS);
+    return () => clearTimeout(id);
+  }, [attempt]);
+
+  // Poster non producibile (ffmpeg assente, video illeggibile): riquadro
+  // neutro, non un download da 100 MB per mostrare un fermo immagine.
+  if (isVideo && attempt > 2) {
     return (
       <div className={`flex items-center justify-center bg-gray-100 text-2xl dark:bg-gray-800 ${className}`}>
         🎬
       </div>
     );
   }
+  // In attesa del ritentativo: riquadro vuoto, senza <img> che riproverebbe subito.
+  if (isVideo && attempt === 1) {
+    return <div className={`bg-gray-100 dark:bg-gray-800 ${className}`} />;
+  }
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={isVideo ? posterUrl(item) : mediaUrl(item)}
+      // La query rompe la cache del 404 precedente, che altrimenti il browser
+      // riuserebbe rendendo inutile il ritentativo.
+      src={isVideo ? `${posterUrl(item)}${attempt ? `?r=${attempt}` : ""}` : mediaUrl(item)}
       alt={item.originalName}
       loading="lazy"
       decoding="async"
-      onError={isVideo ? () => setNoPoster(true) : undefined}
+      onError={isVideo ? () => setAttempt((a) => a + 1) : undefined}
       className={`object-cover ${className}`}
     />
   );

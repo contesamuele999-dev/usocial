@@ -12,6 +12,7 @@ import { withUser } from "@/lib/api";
 import { createMedia, getMedia } from "@/lib/repo";
 import { ensureMediaDir, filePath, newFilePath } from "@/lib/storage";
 import { convertToMp4 } from "@/lib/video";
+import { warmPoster } from "@/lib/poster";
 import { transcribe, whisperAvailable } from "@/lib/whisper";
 import { logger } from "@/lib/logger";
 
@@ -98,6 +99,8 @@ export const POST = withUser<Ctx>("video", async (req, { params }, user) => {
     folder: item.folder || "mp4",
     tags: [item.tags, "mp4", withSubs ? "sottotitoli" : null].filter(Boolean).join(","),
   });
+
+  warmPoster(outName, "video/mp4", user.id);
 
   // pulizia della cartella temporanea di Whisper
   if (srtPath) {

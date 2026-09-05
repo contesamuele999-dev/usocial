@@ -3,7 +3,14 @@
  */
 
 /** Piattaforme supportate. Aggiungerne una = aggiungere un modulo in src/social/. */
-export const PLATFORMS = ["facebook", "instagram", "tiktok", "youtube", "linkedin"] as const;
+export const PLATFORMS = [
+  "facebook",
+  "instagram",
+  "threads",
+  "tiktok",
+  "youtube",
+  "linkedin",
+] as const;
 export type Platform = (typeof PLATFORMS)[number];
 
 /** Stato complessivo di un post. */

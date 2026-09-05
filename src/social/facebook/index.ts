@@ -7,6 +7,7 @@
 import type { Account } from "@/types";
 import {
   apiFetch,
+  type PostMetrics,
   type PublishInput,
   type PublishMedia,
   type PublishResult,
@@ -137,7 +138,15 @@ export const facebookModule: SocialModule = {
   oauth: {
     authorizeUrl: "https://www.facebook.com/v21.0/dialog/oauth",
     tokenUrl: `${GRAPH}/oauth/access_token`,
-    scopes: ["pages_show_list", "pages_read_engagement", "pages_manage_posts", "business_management"],
+    scopes: [
+      "pages_show_list",
+      "pages_read_engagement",
+      "pages_manage_posts",
+      "business_management",
+      // Impression e click del post nella pagina Statistiche. Aggiungerlo
+      // obbliga a ricollegare l'account: i permessi si concedono al consenso.
+      "read_insights",
+    ],
     scopeSeparator: ",",
   },
 
@@ -201,6 +210,52 @@ export const facebookModule: SocialModule = {
     } catch (err) {
       return { ok: false, message: String(err) };
     }
+  },
+
+  /**
+   * Metriche di un post della Pagina.
+   *
+   * I contatori pubblici arrivano con le `summary` dei campi (una sola
+   * chiamata), le impression dagli insight della Pagina. Se gli insight non
+   * sono concessi si tiene comunque il resto: meglio numeri parziali che
+   * nessun numero.
+   */
+  async insights(account: Account, externalId: string): Promise<PostMetrics> {
+    const { pageId, pageToken } = pageAuth(account);
+    const out: PostMetrics = {};
+
+    const base = await apiFetch(
+      `${GRAPH}/${externalId}?fields=likes.summary(true).limit(0),comments.summary(true).limit(0),shares&access_token=${pageToken}`
+    );
+    const summary = (k: string) =>
+      ((base[k] as { summary?: { total_count?: number } } | undefined)?.summary?.total_count) ??
+      undefined;
+    out.likes = summary("likes");
+    out.comments = summary("comments");
+    out.shares = (base.shares as { count?: number } | undefined)?.count ?? undefined;
+
+    try {
+      const res = await apiFetch(
+        `${GRAPH}/${externalId}/insights?metric=post_impressions,post_impressions_unique,post_clicks&access_token=${pageToken}`
+      );
+      const data = (res.data as { name: string; values?: { value: number }[] }[]) || [];
+      const val = (n: string) => data.find((d) => d.name === n)?.values?.[0]?.value;
+      out.views = val("post_impressions");
+      out.reach = val("post_impressions_unique");
+      out.clicks = val("post_clicks");
+    } catch {
+      /* insight non concessi: restano i contatori pubblici */
+    }
+
+    try {
+      const page = await apiFetch(
+        `${GRAPH}/${pageId}?fields=followers_count&access_token=${pageToken}`
+      );
+      out.followers = (page.followers_count as number) ?? undefined;
+    } catch {
+      /* niente follower della Pagina */
+    }
+    return out;
   },
 
   /**

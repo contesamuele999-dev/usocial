@@ -30,6 +30,7 @@ const RENEW_BEFORE_HOURS: Record<Platform, number> = {
   youtube: 12,
   facebook: 24 * 14,
   instagram: 24 * 14,
+  threads: 24 * 14,
   linkedin: 24 * 14,
 };
 

@@ -191,7 +191,7 @@ const TOOLS = [
   {
     name: "usocial_platforms",
     description:
-      "Elenca le piattaforme social (Facebook, Instagram, TikTok, YouTube, LinkedIn) con stato di connessione e limiti: caratteri, MIME ammessi, numero massimo di media (anche per tipo) e tipi di pubblicazione validi per postTypes. Da consultare prima di creare un post.",
+      "Elenca le piattaforme social (Facebook, Instagram, Threads, TikTok, YouTube, LinkedIn) con stato di connessione e limiti: caratteri, MIME ammessi, numero massimo di media (anche per tipo) e tipi di pubblicazione validi per postTypes. Include `comments`, cioè se la piattaforma sa rispondere ai commenti e mandare messaggi privati. Da consultare prima di creare un post o una regola di risposta automatica.",
     inputSchema: { type: "object", properties: {} },
     run: () => call("GET", "/api/platforms"),
   },
@@ -344,6 +344,112 @@ const TOOLS = [
     description: "Elimina un post.",
     inputSchema: { type: "object", properties: { id: { type: "number" } }, required: ["id"] },
     run: (a) => call("DELETE", `/api/posts/${a.id}`),
+  },
+  {
+    name: "usocial_stats",
+    description:
+      "Statistiche dei post pubblicati: totali, andamento giorno per giorno, confronto fra piattaforme, post migliori e peggiori e consigli ricavati dai dati. `refresh: true` rilegge prima i numeri dalle piattaforme (lento: chiama le API social); senza, risponde subito con l'ultima fotografia salvata.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        days: { type: "number", enum: [7, 30, 90], description: "Finestra in giorni (default 30)" },
+        refresh: { type: "boolean", description: "Rilegge i numeri dalle piattaforme prima di rispondere" },
+      },
+    },
+    run: (a) =>
+      call(a.refresh ? "POST" : "GET", `/api/stats?days=${a.days || 30}`),
+  },
+  {
+    name: "usocial_autoreply_rules",
+    description:
+      "Elenca le regole del risponditore automatico ai commenti e le ultime righe del registro (chi ha commentato, cosa è stato mandato, cosa è fallito).",
+    inputSchema: { type: "object", properties: {} },
+    run: () => call("GET", "/api/autoreply/rules"),
+  },
+  {
+    name: "usocial_autoreply_create_rule",
+    description:
+      "Crea una regola del risponditore: quando un commento contiene la parola chiave, uSocial risponde pubblicamente e/o manda un messaggio privato a chi ha scritto. " +
+      "⚠️ La regola nasce SPENTA se non passi enabled:true — una volta attiva scrive a persone vere, in automatico, ogni 5 minuti. " +
+      "Prima di attivarla conviene provarla con usocial_autoreply_run (che di default non manda niente). " +
+      "Serve almeno una fra publicReply e privateReply. Il messaggio privato funziona solo dove `comments.privateReply` è true in usocial_platforms (non su Threads e YouTube).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Nome della regola, per ritrovarla" },
+        keyword: { type: "string", description: 'Parola da riconoscere nel commento, es. "PAUSA". Maiuscole e minuscole sono equivalenti.' },
+        matchMode: {
+          type: "string",
+          enum: ["word", "contains"],
+          description: 'word (default) = parola intera, "PAUSA" non scatta su "pausapranzo"; contains = ovunque nel testo.',
+        },
+        platforms: {
+          type: "array",
+          items: { type: "string" },
+          description: "Piattaforme su cui vale; omesso o vuoto = tutte quelle collegate.",
+        },
+        publicReply: { type: "string", description: "Risposta pubblica sotto al commento. {autore} diventa la menzione di chi ha scritto." },
+        privateReply: { type: "string", description: "Messaggio privato. Meta lo accetta entro 7 giorni dal commento e una volta sola per commento." },
+        enabled: { type: "boolean", description: "true = attiva subito (manda messaggi veri). Default false." },
+      },
+      required: ["keyword"],
+    },
+    run: (a) => call("POST", "/api/autoreply/rules", { enabled: false, ...a }),
+  },
+  {
+    name: "usocial_autoreply_update_rule",
+    description:
+      "Modifica una regola esistente. I campi non passati restano come sono — compreso enabled, che quindi non si accende per sbaglio. Usa enabled:false per sospendere una regola senza cancellarla.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "number" },
+        name: { type: "string" },
+        keyword: { type: "string" },
+        matchMode: { type: "string", enum: ["word", "contains"] },
+        platforms: { type: "array", items: { type: "string" } },
+        publicReply: { type: "string" },
+        privateReply: { type: "string" },
+        enabled: { type: "boolean" },
+      },
+      required: ["id"],
+    },
+    run: async (a) => {
+      // Merge sul valore attuale: l'API riscrive la regola per intero, quindi
+      // un aggiornamento parziale azzererebbe i campi non passati.
+      const { rules } = await call("GET", "/api/autoreply/rules");
+      const current = rules.find((r) => r.id === a.id);
+      if (!current) throw new Error(`Regola ${a.id} non trovata.`);
+      const { id, ...changes } = a;
+      return call("PUT", `/api/autoreply/rules/${id}`, { ...current, ...changes });
+    },
+  },
+  {
+    name: "usocial_autoreply_delete_rule",
+    description: "Elimina una regola del risponditore.",
+    inputSchema: { type: "object", properties: { id: { type: "number" } }, required: ["id"] },
+    run: (a) => call("DELETE", `/api/autoreply/rules/${a.id}`),
+  },
+  {
+    name: "usocial_autoreply_run",
+    description:
+      "Esegue subito un giro del risponditore sui commenti recenti. " +
+      "DI DEFAULT NON MANDA NIENTE: risponde con l'anteprima di cosa verrebbe scritto e a chi (`preview`). " +
+      "Per mandare davvero i messaggi serve simulate:false, e le regole devono essere attive. " +
+      "Chiedi conferma all'utente prima di usare simulate:false: da lì partono commenti pubblici e messaggi privati a persone reali.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        simulate: {
+          type: "boolean",
+          description: "true (default) = prova a vuoto, non invia nulla. false = invia davvero.",
+        },
+      },
+    },
+    run: (a) => {
+      const simulate = a.simulate !== false;
+      return call("POST", `/api/autoreply/run${simulate ? "?simulate=1" : ""}`);
+    },
   },
   {
     name: "usocial_storage",

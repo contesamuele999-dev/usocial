@@ -237,7 +237,16 @@ claude mcp add usocial \
 
 Tool disponibili: `usocial_platforms`, `usocial_list_posts`, `usocial_get_post`,
 `usocial_upload_media`, `usocial_list_media`, `usocial_create_post`,
-`usocial_update_post`, `usocial_publish_post`, `usocial_delete_post`, `usocial_storage`.
+`usocial_update_post`, `usocial_publish_post`, `usocial_delete_post`, `usocial_storage`,
+`usocial_stats`, e per il risponditore ai commenti `usocial_autoreply_rules`,
+`usocial_autoreply_create_rule`, `usocial_autoreply_update_rule`,
+`usocial_autoreply_delete_rule`, `usocial_autoreply_run`.
+
+⚠️ **I predefiniti degli strumenti del risponditore sono quelli innocui**, perché da lì
+partono messaggi verso persone reali: una regola creata da un agente nasce **spenta**
+(serve `enabled: true` per attivarla) e `usocial_autoreply_run` è una **prova a vuoto**
+finché non gli si passa `simulate: false`. Un agente che chiama gli strumenti senza
+rifletterci non può far partire niente.
 
 `usocial_create_post` / `usocial_update_post` accettano anche il **tipo di
 pubblicazione** e le **opzioni di piattaforma**, e verificano i limiti (media

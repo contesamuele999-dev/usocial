@@ -4,6 +4,7 @@
  * mostrare le istruzioni in italiano o inglese secondo la lingua scelta.
  */
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { LegalHeader } from "@/components/LegalHeader";
 
@@ -12,6 +13,17 @@ const CONTACT = "umasterinfo@gmail.com";
 
 export function DataDeletionContent() {
   const { t } = useI18n();
+  /**
+   * Codice di riscontro con cui Meta rimanda qui chi ha chiesto la
+   * cancellazione dei dati (vedi /api/meta/data-deletion). Letto da
+   * `location` e non con `useSearchParams` per non dover avvolgere la pagina
+   * in un <Suspense>: qui serve solo a mostrare una riga di conferma.
+   */
+  const [code, setCode] = useState("");
+  useEffect(() => {
+    setCode(new URLSearchParams(window.location.search).get("code") || "");
+  }, []);
+
   return (
     <div className="mx-auto max-w-3xl px-6 py-12 text-gray-800 dark:text-gray-200">
       <LegalHeader />
@@ -24,6 +36,16 @@ export function DataDeletionContent() {
       <p className="mt-1 text-sm text-gray-500">{t("dataDeletion.updated", { date: UPDATED })}</p>
 
       <div className="mt-8 space-y-6 leading-relaxed">
+        {code && (
+          <div className="rounded-xl border border-green-300 bg-green-50 p-4 text-sm dark:border-green-900 dark:bg-green-950/40">
+            <p className="font-semibold">{t("dataDeletion.requestReceived")}</p>
+            <p className="mt-1">{t("dataDeletion.requestDone")}</p>
+            <p className="mt-1 text-gray-500">
+              {t("dataDeletion.requestCode")} <code className="font-mono">{code}</code>
+            </p>
+          </div>
+        )}
+
         <p>{t("dataDeletion.intro")}</p>
 
         <section>

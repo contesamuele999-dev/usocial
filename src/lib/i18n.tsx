@@ -516,6 +516,10 @@ const it = {
   dataDeletion: {
     title: "Cancellazione dei dati",
     updated: "Ultimo aggiornamento: {date}",
+    requestReceived: "Richiesta ricevuta ✅",
+    requestDone:
+      "Il collegamento con la piattaforma è stato rimosso: token e dati del profilo ottenuti da lì non sono più conservati. I tuoi post e i tuoi media restano nel tuo account uSocial; per cancellare anche quelli usa una delle due opzioni qui sotto.",
+    requestCode: "Codice di riscontro:",
     intro:
       "uSocial è uno strumento self-hosted per pubblicare contenuti sui social network. Puoi eliminare in qualsiasi momento il tuo account e tutti i dati associati (post, media, token dei social collegati, impostazioni e log).",
     optionAppTitle: "Opzione 1 — Dall'applicazione (immediata)",
@@ -1124,6 +1128,10 @@ const en: typeof it = {
   },
   dataDeletion: {
     title: "Data deletion",
+    requestReceived: "Request received ✅",
+    requestDone:
+      "The link to the platform has been removed: the token and profile data obtained from it are no longer stored. Your posts and media stay in your uSocial account; to delete those as well, use one of the two options below.",
+    requestCode: "Confirmation code:",
     updated: "Last updated: {date}",
     intro:
       "uSocial is a self-hosted tool for publishing content to social networks. You can delete your account and all associated data (posts, media, linked social tokens, settings and logs) at any time.",

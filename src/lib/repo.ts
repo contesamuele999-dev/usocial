@@ -748,6 +748,20 @@ export function saveAccount(account: Account): void {
     .run(account as unknown as Record<string, unknown>);
 }
 
+/**
+ * Account collegati il cui id sulla piattaforma è quello dato.
+ *
+ * Serve ai callback di Meta ("disinstalla" e "cancella i dati"), che
+ * identificano la persona con l'id che LA PIATTAFORMA le ha assegnato: non
+ * sanno nulla dell'utente uSocial, quindi si risale da lì.
+ */
+export function accountsByExternalId(accountId: string): Account[] {
+  const rows = getDb()
+    .prepare("SELECT * FROM accounts WHERE account_id = ?")
+    .all(accountId) as Record<string, unknown>[];
+  return rows.map(rowToAccount);
+}
+
 export function deleteAccount(userId: number, platform: Platform): boolean {
   return (
     getDb()

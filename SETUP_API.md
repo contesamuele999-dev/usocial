@@ -98,10 +98,17 @@ personale, non serve un account business).
    ```
    ⚠️ Non sono l'ID e la chiave che hai messo in `META_CLIENT_ID`: quelli non funzionano
    con `graph.threads.net`.
-4. Sempre lì, in **Redirect Callback URLs** aggiungi:
-   `{APP_URL}/api/connect/threads/callback`
-   Deve essere **https**: Threads rifiuta `http://localhost`, quindi in locale serve il
-   tunnel del Passo 0.
+4. Sempre lì compila i tre indirizzi:
+
+   | Campo | Valore |
+   |---|---|
+   | URL di callback di reindirizzamento | `{APP_URL}/api/connect/threads/callback` |
+   | Disinstalla URL di callback | `{APP_URL}/api/meta/deauthorize` |
+   | Elimina URL di callback | `{APP_URL}/api/meta/data-deletion` |
+
+   Devono essere **https**: Threads rifiuta `http://localhost`, quindi in locale serve il
+   tunnel del Passo 0. Gli stessi due indirizzi di disinstallazione e cancellazione
+   valgono anche per l'app Facebook/Instagram.
 5. In **Ruoli app** aggiungi il tuo account Threads come tester finché l'app è in
    sviluppo, e accetta l'invito dall'app Threads (Impostazioni → Sito web → Inviti).
 6. Riavvia uSocial, poi **Impostazioni → Connetti** su Threads.
@@ -128,6 +135,38 @@ Da sapere:
 
 ---
 
+## I due callback di Meta (disinstallazione e cancellazione dati)
+
+Nella configurazione delle app Meta — Facebook, Instagram e Threads — ci sono altri due
+campi oltre al redirect. Non servono a far entrare l'utente: li chiama **Meta**, dai suoi
+server, quando succede qualcosa dalla parte sua.
+
+| Campo nella console Meta | Indirizzo da mettere | Quando viene chiamato |
+|---|---|---|
+| **Disinstalla URL di callback** *(Deauthorize)* | `{APP_URL}/api/meta/deauthorize` | qualcuno toglie l'autorizzazione a uSocial dalle impostazioni del proprio profilo |
+| **Elimina URL di callback** *(Data Deletion Request)* | `{APP_URL}/api/meta/data-deletion` | qualcuno chiede la cancellazione dei dati che uSocial ha ottenuto dalla piattaforma |
+
+Sono gli stessi per tutte e tre le piattaforme: uSocial riconosce da sé con quale app è
+stata firmata la richiesta.
+
+Cosa fanno:
+- **verificano la firma** (`signed_request`) con la chiave segreta dell'app, così nessuno
+  può scollegare l'account di un altro conoscendone l'id;
+- **cancellano il collegamento social**: token, id e nome profilo ricevuti da Meta;
+- **non toccano** post, media e account uSocial, che non appartengono a Meta. Per
+  cancellare anche quelli restano la pagina `/data-deletion` e *Impostazioni → Elimina il
+  mio account*.
+
+Il secondo risponde a Meta con un **codice di riscontro** e un link alla pagina
+`/data-deletion`, che mostra la conferma: è il formato che Meta pretende, ed è il motivo
+per cui in quel campo non basta mettere l'indirizzo di una pagina normale.
+
+Sono **facoltativi** per usare l'app, ma Meta li chiede in fase di revisione — e senza il
+primo un utente che revoca l'accesso continuerebbe a vedere l'account "connesso" in
+uSocial, con un token ormai morto.
+
+---
+
 ## Riepilogo Redirect URI (copia-incolla)
 
 | Piattaforma | Redirect URI da inserire nel portale developer |
@@ -138,6 +177,13 @@ Da sapere:
 | Threads | `{APP_URL}/api/connect/threads/callback` |
 | YouTube | `{APP_URL}/api/connect/youtube/callback` |
 | TikTok | `{APP_URL}/api/connect/tiktok/callback` |
+
+E i due callback che Meta chiama da sé (Facebook, Instagram e Threads, gli stessi per tutte):
+
+| Campo | Indirizzo |
+|---|---|
+| Disinstalla URL di callback | `{APP_URL}/api/meta/deauthorize` |
+| Elimina URL di callback | `{APP_URL}/api/meta/data-deletion` |
 
 Dopo ogni modifica al `.env`, **riavvia** l'app (`npm run dev` o `docker compose up -d`).
 Poi ogni utente collega i propri account da **Impostazioni → Connetti**.

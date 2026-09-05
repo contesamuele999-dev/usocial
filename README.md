@@ -189,6 +189,7 @@ utente e operano **solo** sui dati dell'utente loggato.
 | GET/POST | `/api/stats` | statistiche dei post pubblicati (POST = rilegge i numeri dalle piattaforme) |
 | GET | `/api/platforms` | piattaforme + stato connessione |
 | GET | `/api/connect/:platform` | avvia OAuth per collegare un account all'utente |
+| POST | `/api/meta/deauthorize` · `/api/meta/data-deletion` | callback chiamati da Meta (pubblici, autenticati dalla firma del `signed_request`): scollegano l'account quando l'utente revoca l'accesso o chiede la cancellazione dei dati |
 | POST/DELETE | `/api/accounts/:platform` | verifica token / disconnetti |
 | GET | `/api/logs` | log applicativi |
 | GET/PUT | `/api/settings` | preferenze (es. pulizia media dopo la pubblicazione) |

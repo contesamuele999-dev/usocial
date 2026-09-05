@@ -117,14 +117,22 @@ export function startScheduler() {
   // Risponditore automatico ai commenti. Gira solo per gli utenti che hanno
   // almeno una regola ATTIVA: una regola creata e mai accesa non deve
   // scrivere a nessuno.
+  /**
+   * Due velocità: ogni 5 minuti si guardano solo i post delle ultime 48 ore
+   * (dove i commenti arrivano davvero), e ogni mezz'ora si passa in rassegna
+   * tutto l'ultimo mese. Interrogare quaranta post ogni cinque minuti
+   * esaurirebbe il tetto orario di chiamate delle API social.
+   */
+  let autoReplyTicks = 0;
   const autoReplyTick = async () => {
+    const deep = autoReplyTicks++ % 6 === 0;
     try {
       const { allAccountsSystem, listAutoReplyRules } = await import("./repo");
       const { runAutoReply } = await import("./autoreply");
       const users = [...new Set(allAccountsSystem().map((a) => a.userId))];
       for (const userId of users) {
         if (!listAutoReplyRules(userId).some((r) => r.enabled)) continue;
-        await runAutoReply(userId);
+        await runAutoReply(userId, false, deep);
       }
     } catch (err) {
       logger.error("scheduler", "Errore nel risponditore ai commenti", String(err));

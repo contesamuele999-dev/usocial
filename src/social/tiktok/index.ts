@@ -25,6 +25,7 @@
 import type { Account } from "@/types";
 import {
   apiFetch,
+  InsightsUnavailableError,
   type CreatorInfo,
   type PostMetrics,
   type PublishInput,
@@ -334,6 +335,45 @@ async function waitPhotoDownload(account: Account, publishId: string, timeoutMs 
   }
 }
 
+/**
+ * Traduce il `publish_id` restituito dalla pubblicazione nell'id del video.
+ *
+ * TikTok lo espone solo dentro lo stato della pubblicazione, e solo per i
+ * Direct Post andati a buon fine. Per le bozze (`SEND_TO_USER_INBOX`) non
+ * esiste: il post lo completa l'utente dall'app e l'id non torna indietro.
+ */
+async function resolvePostId(account: Account, publishId: string): Promise<string> {
+  let data: { status?: string; publicaly_available_post_id?: (string | number)[] } = {};
+  try {
+    const res = await apiFetch(`${API}/post/publish/status/fetch/`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${account.accessToken}`,
+        "Content-Type": "application/json; charset=UTF-8",
+      },
+      body: JSON.stringify({ publish_id: publishId }),
+    });
+    data = (res.data || {}) as typeof data;
+  } catch {
+    // Lo stato di una pubblicazione vecchia TikTok non lo tiene per sempre.
+    throw new InsightsUnavailableError(
+      "TikTok non conserva il collegamento fra il caricamento e il video pubblicato: per questo post le statistiche non sono recuperabili."
+    );
+  }
+
+  const id = data.publicaly_available_post_id?.[0];
+  if (id) return String(id);
+
+  if (data.status === "SEND_TO_USER_INBOX") {
+    throw new InsightsUnavailableError(
+      "Caricato come bozza: TikTok non comunica l'id del post pubblicato dall'app, quindi le statistiche non sono associabili a questo contenuto. Con il Direct Post (dopo l'audit) i numeri arrivano."
+    );
+  }
+  throw new InsightsUnavailableError(
+    `TikTok non ha ancora un id pubblico per questo caricamento (stato ${data.status || "sconosciuto"}).`
+  );
+}
+
 export const tiktokModule: SocialModule = {
   platform: "tiktok",
   displayName: "TikTok",
@@ -457,8 +497,16 @@ export const tiktokModule: SocialModule = {
 
   /**
    * Metriche di un video pubblicato (scope `video.list`).
-   * L'id restituito dal Direct Post è quello del video: si interroga
-   * `video/query` filtrando su quell'id.
+   *
+   * ⚠️ Quello che `publish` salva NON è l'id del video ma il `publish_id` della
+   * richiesta (`v_inbox_file~v2.123…`): TikTok l'id del post non lo restituisce
+   * mai direttamente. Passarlo a `video/query` produce
+   * "Video ID … is invalid. Must be an integer!".
+   *
+   * L'unico modo di risalire al video è chiedere lo STATO della pubblicazione,
+   * che a cose fatte contiene `publicaly_available_post_id`. Per le bozze
+   * caricate nell'inbox quell'id non arriva mai — è l'utente a completare il
+   * post dall'app TikTok, e l'app non lo comunica a nessuno.
    */
   async insights(account: Account, externalId: string): Promise<PostMetrics> {
     if (account.scopes && !account.scopes.includes("video.list")) {
@@ -466,6 +514,14 @@ export const tiktokModule: SocialModule = {
         "TikTok: statistiche non disponibili senza il permesso video.list. Attivalo nell'app su developers.tiktok.com, metti TIKTOK_SCOPE_VIDEO_LIST=true nel .env e ricollega l'account."
       );
     }
+
+    // Id numerico = è già un video id (post salvati da versioni future o
+    // risolti a mano); altrimenti è un publish_id da tradurre.
+    let videoId = externalId;
+    if (!/^\d+$/.test(externalId)) {
+      videoId = await resolvePostId(account, externalId);
+    }
+
     const res = await apiFetch(
       `${API}/video/query/?fields=id,like_count,comment_count,share_count,view_count`,
       {
@@ -474,7 +530,7 @@ export const tiktokModule: SocialModule = {
           Authorization: `Bearer ${account.accessToken}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ filters: { video_ids: [externalId] } }),
+        body: JSON.stringify({ filters: { video_ids: [videoId] } }),
       }
     );
     const videos = (res.data as { videos?: Record<string, number>[] } | undefined)?.videos || [];

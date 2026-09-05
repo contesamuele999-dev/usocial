@@ -66,8 +66,22 @@ export function parseRule(body: Record<string, unknown>): AutoReplyRuleInput {
   };
 }
 
-/** Da quanto indietro si guardano i post: oltre, i commenti sono comunque fuori finestra. */
-export const LOOKBACK_DAYS = 7;
+/**
+ * Quanto indietro si guardano i post nel giro "profondo".
+ *
+ * Non sono i 7 giorni della finestra dei messaggi privati: quella si conta dal
+ * COMMENTO, non dal post. Un commento nuovo può arrivare su un post di un mese
+ * fa e il DM è comunque ammesso — con una finestra di 7 giorni sui post quel
+ * commento non l'avremmo mai letto.
+ */
+export const LOOKBACK_DAYS = 30;
+
+/**
+ * Giro "leggero": solo i post appena usciti, dove i commenti arrivano davvero.
+ * Serve a non interrogare quaranta post ogni cinque minuti — le API social
+ * hanno un tetto di chiamate all'ora e lo si esaurirebbe in fretta.
+ */
+export const FRESH_HOURS = 48;
 
 /** Tetto di risposte per esecuzione: un post virale non deve svuotare la quota API. */
 const MAX_REPLIES_PER_RUN = 30;
@@ -156,7 +170,12 @@ export interface AutoReplyResult {
  * senza consumare la finestra dei 7 giorni: serve a vedere cosa direbbero le
  * regole prima di puntarle su persone vere.
  */
-export async function runAutoReply(userId: number, simulate = false): Promise<AutoReplyResult> {
+export async function runAutoReply(
+  userId: number,
+  simulate = false,
+  /** true = tutta la finestra lunga; false = solo i post delle ultime 48 ore. */
+  deep = true
+): Promise<AutoReplyResult> {
   const res: AutoReplyResult = {
     scanned: 0,
     replied: 0,
@@ -170,7 +189,9 @@ export async function runAutoReply(userId: number, simulate = false): Promise<Au
   const rules = listAutoReplyRules(userId).filter((r) => simulate || r.enabled);
   if (rules.length === 0) return res;
 
-  const since = new Date(Date.now() - LOOKBACK_DAYS * 86400_000).toISOString();
+  const since = new Date(
+    Date.now() - (deep ? LOOKBACK_DAYS * 86400_000 : FRESH_HOURS * 3600_000)
+  ).toISOString();
   const targets = metricTargets(since, userId);
   /** Un errore per piattaforma: sono tutti lo stesso problema di permessi. */
   const reported = new Set<Platform>();
@@ -179,6 +200,11 @@ export async function runAutoReply(userId: number, simulate = false): Promise<Au
 
   for (const target of targets) {
     if (res.replied >= MAX_REPLIES_PER_RUN) break;
+
+    // Le storie non hanno commenti: Instagram risponde
+    // "(#10) Comments cannot be made on story media" e la pagina si riempiva
+    // di un errore che non segnalava niente di sbagliato.
+    if (target.postType === "story") continue;
 
     const mod = getModule(target.platform);
     if (!mod.comments || !mod.listComments) continue;
@@ -190,7 +216,16 @@ export async function runAutoReply(userId: number, simulate = false): Promise<Au
     );
     if (applicable.length === 0) continue;
 
-    if (!seen.has(target.platform)) seen.set(target.platform, seenCommentIds(userId, target.platform));
+    // In simulazione si riparte da zero: una prova a vuoto deve mostrare cosa
+    // farebbero le regole su TUTTI i commenti, non solo su quelli che lo
+    // scheduler non ha ancora visto. Altrimenti si prova una regola nuova e si
+    // legge "0 commenti", che sembra un guasto.
+    if (!seen.has(target.platform)) {
+      seen.set(
+        target.platform,
+        simulate ? new Set<string>() : seenCommentIds(userId, target.platform)
+      );
+    }
     const already = seen.get(target.platform)!;
 
     let comments: SocialComment[];

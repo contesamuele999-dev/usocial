@@ -243,19 +243,45 @@ export const facebookModule: SocialModule = {
     let letto = false;
     let primoErrore: unknown = null;
 
-    try {
+    /**
+     * `shares` non esiste su tutti i tipi di post: su alcuni (foto, contenuti
+     * senza condivisioni) Meta risponde
+     * "(#100) Tried accessing nonexisting field (shares)" e butta via anche
+     * like e commenti, che invece ci sarebbero. Quindi: prima si chiede tutto,
+     * e solo se il campo non esiste si ripiega sui contatori sicuri.
+     */
+    const readCounters = async (withShares: boolean) => {
+      const fields = [
+        "likes.summary(true).limit(0)",
+        "comments.summary(true).limit(0)",
+        ...(withShares ? ["shares"] : []),
+      ].join(",");
       const base = await apiFetch(
-        `${GRAPH}/${externalId}?fields=likes.summary(true).limit(0),comments.summary(true).limit(0),shares&access_token=${pageToken}`
+        `${GRAPH}/${externalId}?fields=${fields}&access_token=${pageToken}`
       );
       const summary = (k: string) =>
         ((base[k] as { summary?: { total_count?: number } } | undefined)?.summary?.total_count) ??
         undefined;
       out.likes = summary("likes");
       out.comments = summary("comments");
-      out.shares = (base.shares as { count?: number } | undefined)?.count ?? undefined;
+      if (withShares) {
+        out.shares = (base.shares as { count?: number } | undefined)?.count ?? undefined;
+      }
       letto = true;
+    };
+
+    try {
+      await readCounters(true);
     } catch (err) {
-      primoErrore = err;
+      if (String(err).includes("nonexisting field")) {
+        try {
+          await readCounters(false);
+        } catch (retry) {
+          primoErrore = retry;
+        }
+      } else {
+        primoErrore = err;
+      }
     }
 
     try {

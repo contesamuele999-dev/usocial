@@ -142,3 +142,14 @@ describe("fillTemplate", () => {
     expect(fillTemplate("Ciao {autore}", comment({ author: "" }))).toBe("Ciao ");
   });
 });
+
+describe("finestre temporali", () => {
+  it("guarda i post di un mese, non solo quelli della finestra dei DM", async () => {
+    // I 7 giorni sono la finestra del messaggio privato, contata dal COMMENTO.
+    // Un commento nuovo su un post di tre settimane fa è perfettamente valido:
+    // con una finestra di 7 giorni sui post non l'avremmo mai letto.
+    const { LOOKBACK_DAYS, FRESH_HOURS } = await import("@/lib/autoreply");
+    expect(LOOKBACK_DAYS).toBeGreaterThanOrEqual(30);
+    expect(FRESH_HOURS).toBeLessThan(LOOKBACK_DAYS * 24);
+  });
+});

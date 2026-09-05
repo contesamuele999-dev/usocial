@@ -272,8 +272,13 @@ Limiti che vengono da Meta, non da uSocial:
 - il messaggio privato agganciato a un commento si può mandare **entro 7 giorni** e **una
   volta sola per commento**. Passata la finestra, uSocial usa la sola risposta pubblica
   invece di collezionare errori;
-- il motore controlla i post degli **ultimi 7 giorni ogni 5 minuti**, con un tetto di 30
-  risposte per giro perché un post virale non svuoti la quota di chiamate.
+- il motore guarda i post delle **ultime 48 ore ogni 5 minuti** e tutti quelli
+  dell'**ultimo mese ogni mezz'ora**: la finestra dei 7 giorni riguarda il DM e si conta
+  dal *commento*, quindi un commento nuovo su un post vecchio va comunque letto. Le due
+  velocità servono a non esaurire il tetto orario di chiamate delle API;
+- tetto di 30 risposte per giro, perché un post virale non svuoti la quota;
+- le **storie non hanno commenti**: vengono saltate (Instagram risponde
+  «Comments cannot be made on story media»).
 
 Ogni regola nasce **spenta**, e il pulsante «Prova a vuoto» mostra cosa verrebbe mandato
 senza mandarlo: qui in fondo si scrive a persone vere.
@@ -314,7 +319,7 @@ Le piattaforme non le danno con gli stessi permessi della pubblicazione:
 | Facebook | scope `read_insights` (già richiesto: **ricollega l'account**) | impression, copertura, click, like, commenti, condivisioni |
 | Threads | scope `threads_manage_insights` | visualizzazioni, like, risposte, repost e citazioni |
 | YouTube | niente in più (basta `youtube.readonly`) | visualizzazioni, like, commenti, iscritti |
-| TikTok | scope `video.list`, da abilitare **prima** nell'app su developers.tiktok.com, poi `TIKTOK_SCOPE_VIDEO_LIST=true` nel `.env` e **ricollega l'account** | visualizzazioni, like, commenti, condivisioni |
+| TikTok | scope `video.list` (da abilitare prima nell'app su developers.tiktok.com), poi `TIKTOK_SCOPE_VIDEO_LIST=true` e **ricollega**. ⚠️ Solo per i **Direct Post**: di un caricamento in bozza TikTok non comunica mai l'id del post pubblicato dall'app, quindi quei contenuti restano senza numeri | visualizzazioni, like, commenti, condivisioni |
 | LinkedIn | non ottenibili su un profilo personale | `socialActions` risponde 403 con i permessi di un profilo (`w_member_social` serve a pubblicare, non a rileggere) e le impression esistono solo per le Pagine aziendali, con il prodotto "Community Management API". La pagina lo segnala come «statistiche non disponibili», non come permesso mancante |
 
 Dopo aver cambiato gli scope, gli account **già collegati continuano a usare i vecchi

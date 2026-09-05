@@ -440,13 +440,14 @@ const it = {
   autoreply: {
     title: "Risposte automatiche",
     intro:
-      "Riconosce una parola chiave nei commenti dei tuoi post e risponde da sola: pubblicamente sotto al commento, in privato a chi l'ha scritto, o entrambe. Controlla i post degli ultimi 7 giorni ogni 5 minuti.",
+      "Riconosce una parola chiave nei commenti dei tuoi post e risponde da sola: pubblicamente sotto al commento, in privato a chi l'ha scritto, o entrambe. Guarda i post delle ultime 48 ore ogni 5 minuti, e tutti quelli dell'ultimo mese ogni mezz'ora.",
     noAccounts:
       "Nessun account collegato fra quelli che gestiscono i commenti. Collega Instagram, Facebook, Threads o YouTube dalle Impostazioni.",
     newRule: "➕ Nuova regola",
     simulate: "🧪 Prova a vuoto",
     runNow: "▶️ Esegui adesso",
-    simResult: "Simulazione: non è stato inviato niente.",
+    simResult:
+      "Simulazione: non è stato inviato niente. Riesamina TUTTI i commenti dell'ultimo mese, anche quelli a cui il risponditore ha già risposto.",
     runResult: "Esecuzione completata.",
     runCounts: "{scanned} commenti nuovi · {replied} gestiti · {dm} messaggi privati · {failed} falliti",
     wouldPublic: "risposta pubblica:",
@@ -1107,13 +1108,14 @@ const en: typeof it = {
   autoreply: {
     title: "Auto replies",
     intro:
-      "Spots a keyword in the comments on your posts and replies on its own: publicly under the comment, privately to whoever wrote it, or both. Checks the last 7 days of posts every 5 minutes.",
+      "Spots a keyword in the comments on your posts and replies on its own: publicly under the comment, privately to whoever wrote it, or both. Checks posts from the last 48 hours every 5 minutes, and everything from the last month every half hour.",
     noAccounts:
       "None of the connected accounts handles comments. Connect Instagram, Facebook, Threads or YouTube in Settings.",
     newRule: "➕ New rule",
     simulate: "🧪 Dry run",
     runNow: "▶️ Run now",
-    simResult: "Dry run: nothing was sent.",
+    simResult:
+      "Dry run: nothing was sent. It re-examines EVERY comment from the last month, including ones already handled.",
     runResult: "Run finished.",
     runCounts: "{scanned} new comments · {replied} handled · {dm} private messages · {failed} failed",
     wouldPublic: "public reply:",

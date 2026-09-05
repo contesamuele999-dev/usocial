@@ -19,6 +19,19 @@ import { env } from "@/lib/env";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 
+/**
+ * I permessi sui MESSAGGI non esistono finché l'app Meta non ha il prodotto
+ * **Messenger**: chiederli comunque fa rispondere a Facebook
+ * "Invalid Scopes: pages_messaging" alla schermata di consenso. Il login
+ * prosegue (Meta ignora i permessi non validi), ma l'avviso comparirebbe a
+ * ogni connessione — e il messaggio privato non funzionerebbe lo stesso.
+ *
+ * Quindi sono opt-in: aggiungi Messenger all'app, poi metti
+ * META_SCOPE_MESSAGING=true nel .env e ricollega. Senza, il risponditore usa
+ * la sola risposta pubblica, che non richiede nulla di tutto questo.
+ */
+const MESSAGING = process.env.META_SCOPE_MESSAGING === "true";
+
 function igAuth(account: Account): { igUserId: string; token: string } {
   const meta = JSON.parse(account.meta || "{}");
   if (!meta.igUserId) {
@@ -65,10 +78,12 @@ export const instagramModule: SocialModule = {
       // Serve alla pagina Statistiche. È lo stesso permesso che Meta concede
       // insieme agli altri: aggiungerlo obbliga però a ricollegare l'account.
       "instagram_manage_insights",
-      // Risponditore automatico ai commenti: leggere/rispondere e mandare il
-      // messaggio privato agganciato al commento sono due permessi distinti.
+      // Risponditore automatico ai commenti.
       "instagram_manage_comments",
-      "instagram_manage_messages",
+      // `pages_manage_metadata` è nei prerequisiti Meta per la messaggistica
+      // Instagram, insieme al permesso sui messaggi: senza, la chiamata viene
+      // rifiutata anche col token giusto.
+      ...(MESSAGING ? ["instagram_manage_messages", "pages_manage_metadata"] : []),
       "pages_show_list",
       "business_management",
     ],
@@ -83,8 +98,11 @@ export const instagramModule: SocialModule = {
     tokens.accessToken = (ll.access_token as string) || tokens.accessToken;
     tokens.expiresIn = (ll.expires_in as number) || 60 * 24 * 3600;
 
+    // `access_token` fra i campi: è il token DELLA PAGINA, e serve ai messaggi
+    // privati (l'API dei messaggi Instagram passa dalla Pagina collegata, non
+    // dal token utente). Va preso qui: dopo non c'è più il consenso fresco.
     const pages = await apiFetch(
-      `${GRAPH}/me/accounts?fields=id,name,instagram_business_account{id,username}&access_token=${tokens.accessToken}`
+      `${GRAPH}/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}&access_token=${tokens.accessToken}`
     );
     const withIg = (pages.data as Record<string, unknown>[] | undefined)?.find(
       (p) => p.instagram_business_account
@@ -96,7 +114,12 @@ export const instagramModule: SocialModule = {
     return {
       accountId: ig.id,
       accountName: `@${ig.username}`,
-      meta: { igUserId: ig.id, username: ig.username, pageId: withIg.id },
+      meta: {
+        igUserId: ig.id,
+        username: ig.username,
+        pageId: withIg.id,
+        pageToken: (withIg.access_token as string) || "",
+      },
     };
   },
 
@@ -251,7 +274,9 @@ export const instagramModule: SocialModule = {
 
   comments: {
     publicReply: true,
-    privateReply: true,
+    // Senza il permesso non ha senso offrire il messaggio privato nella UI:
+    // si prometterebbe qualcosa che poi fallisce a ogni commento.
+    privateReply: MESSAGING,
     // Meta accetta il messaggio privato entro 7 giorni dal commento, e uno
     // solo per commento: oltre, risponde con un errore e basta.
     privateReplyWindowHours: 24 * 7,
@@ -290,8 +315,17 @@ export const instagramModule: SocialModule = {
    * persone che non ti hanno mai scritto in DM.
    */
   async privateReply(account: Account, comment: SocialComment, message: string) {
-    const { igUserId, token } = igAuth(account);
-    await apiFetch(`${GRAPH}/${igUserId}/messages?access_token=${token}`, {
+    const { igUserId } = igAuth(account);
+    // ⚠️ Qui NON va il token utente: l'API dei messaggi Instagram vuole il
+    // token della Pagina collegata. Col token utente risponde che mancano i
+    // permessi, e sembra un problema di scope quando non lo è.
+    const meta = JSON.parse(account.meta || "{}") as { pageToken?: string };
+    if (!meta.pageToken) {
+      throw new Error(
+        "Instagram: manca il token della Pagina, necessario per i messaggi privati. Ricollega l'account Instagram dalle Impostazioni."
+      );
+    }
+    await apiFetch(`${GRAPH}/${igUserId}/messages?access_token=${meta.pageToken}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

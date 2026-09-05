@@ -181,17 +181,77 @@ uSocial manda l'utente su `facebook.com/…/dialog/oauth` e ricava l'account IG 
 **senza** il prefisso `business`. Quelli con `instagram_business_*` appartengono all'altra
 API e con questo flusso non fanno niente.
 
-### `pages_messaging` non compare nell'elenco
+### `pages_messaging` non compare nell'elenco, o dà «Invalid Scopes»
 
-È normale: non sta fra i permessi delle Pagine. Compare solo dopo aver aggiunto all'app il
-prodotto **Messenger** (o il caso d'uso *Messaggistica*), perché è lì che vive. Stessa cosa
-per `instagram_manage_messages`, che arriva con **Messenger → Impostazioni Instagram**.
+È normale: non sta fra i permessi delle Pagine. Esiste solo dopo aver aggiunto all'app il
+prodotto **Messenger** (o il caso d'uso *Messaggistica*). Chiederlo prima fa rispondere a
+Facebook, alla schermata di consenso:
 
-Se non vuoi (o non puoi) aggiungere Messenger: lascia vuoto il campo «messaggio privato»
-nella regola e usa la sola risposta pubblica. Il risponditore tratta le due azioni come
-indipendenti, quindi il permesso mancante sul DM **non** blocca la risposta pubblica.
+```
+Invalid Scopes: pages_messaging. This message is only shown to developers.
+```
+
+Il login prosegue lo stesso (Meta ignora i permessi non validi) ma il messaggio privato non
+funziona. Stessa storia per `instagram_manage_messages`, che arriva con **Messenger →
+Impostazioni Instagram**.
+
+Per questo uSocial **non li chiede** finché non glielo dici tu:
+
+```
+META_SCOPE_MESSAGING=false   # nel .env
+```
+
+- **A `false` (predefinito)**: nessun avviso al consenso, il risponditore usa la sola
+  risposta pubblica. La pagina Risposte automatiche mostra Instagram e Facebook con
+  l'etichetta *(senza messaggi privati)* invece di promettere un DM che fallirebbe.
+- **A `true`**: aggiungi prima Messenger all'app, poi metti `true` e **ricollega** gli
+  account.
+
+Anche col permesso mancante non si rompe niente a metà: il risponditore tratta messaggio
+privato e risposta pubblica come azioni **indipendenti**, quindi un DM rifiutato non
+impedisce al commento pubblico di partire.
 
 ---
+
+### Aggiungere il prodotto Messenger (per i messaggi privati)
+
+Serve solo se vuoi che il risponditore mandi il DM. Nella console Meta:
+
+1. **developers.facebook.com → la tua app → Dashboard.**
+2. Nella colonna di sinistra cerca **Prodotti** e il pulsante **+** (o *Aggiungi prodotto*).
+   Se l'app è di quelle nuove, organizzate per **Casi d'uso**, la voce sta in
+   *Casi d'uso → Aggiungi caso d'uso → Messaggistica di Messenger*.
+3. Trova **Messenger** nell'elenco → **Configura**.
+4. **Messenger → Impostazioni**: nella sezione *Token di accesso* collega la tua **Pagina
+   Facebook** (quella a cui è collegato l'account Instagram).
+5. Per i DM di Instagram, sempre in **Messenger → Impostazioni Instagram**, collega
+   l'account Instagram.
+
+Poi nel `.env`:
+
+```
+META_SCOPE_MESSAGING=true
+```
+
+e **ricollega Instagram e Facebook** dalle Impostazioni di uSocial.
+
+#### Il passaggio che non sta nella console
+
+C'è un interruttore **dentro l'app Instagram sul telefono**, senza il quale l'API dei
+messaggi rifiuta tutto anche con i permessi perfetti:
+
+> Instagram → Impostazioni → **Messaggi e risposte alle storie** → **Controlli dei
+> messaggi** → **Strumenti connessi** → attiva **«Consenti l'accesso ai messaggi»**
+
+Se il DM continua a fallire con un errore di permessi dopo aver fatto tutto il resto,
+è quasi sempre questo.
+
+#### Perché serve il token della Pagina
+
+I messaggi privati di Instagram non passano dal token dell'utente ma da quello della
+**Pagina Facebook collegata**: uSocial lo salva al momento della connessione. È un altro
+motivo per cui, dopo aver messo `META_SCOPE_MESSAGING=true`, l'account Instagram va
+ricollegato e non basta riavviare.
 
 ## Risponditore automatico ai commenti
 
@@ -200,8 +260,8 @@ La pagina **Risposte automatiche** riconosce una parola chiave nei commenti (il 
 
 | Piattaforma | Risposta pubblica | Messaggio privato | Permessi da aggiungere |
 |---|---|---|---|
-| Instagram | ✅ | ✅ | `instagram_manage_comments`, `instagram_manage_messages` |
-| Facebook | ✅ | ✅ | `pages_manage_engagement`, `pages_messaging` |
+| Instagram | ✅ | ✅ con `META_SCOPE_MESSAGING=true` | `instagram_manage_comments` (+ `instagram_manage_messages`) |
+| Facebook | ✅ | ✅ con `META_SCOPE_MESSAGING=true` | `pages_manage_engagement` (+ `pages_messaging`) |
 | Threads | ✅ | ❌ non esiste una API DM | `threads_manage_replies` |
 | YouTube | ✅ | ❌ | `youtube.force-ssl` |
 | TikTok, LinkedIn | ❌ | ❌ | — |

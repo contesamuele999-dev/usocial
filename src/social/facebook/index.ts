@@ -18,6 +18,19 @@ import {
 import { env } from "@/lib/env";
 import { fileBlob, fileBlobRange } from "../upload";
 
+/**
+ * I permessi sui MESSAGGI non esistono finché l'app Meta non ha il prodotto
+ * **Messenger**: chiederli comunque fa rispondere a Facebook
+ * "Invalid Scopes: pages_messaging" alla schermata di consenso. Il login
+ * prosegue (Meta ignora i permessi non validi), ma l'avviso comparirebbe a
+ * ogni connessione — e il messaggio privato non funzionerebbe lo stesso.
+ *
+ * Quindi sono opt-in: aggiungi Messenger all'app, poi metti
+ * META_SCOPE_MESSAGING=true nel .env e ricollega. Senza, il risponditore usa
+ * la sola risposta pubblica, che non richiede nulla di tutto questo.
+ */
+const MESSAGING = process.env.META_SCOPE_MESSAGING === "true";
+
 const GRAPH = "https://graph.facebook.com/v21.0";
 
 async function uploadMultipart(
@@ -147,10 +160,9 @@ export const facebookModule: SocialModule = {
       // Impression e click del post nella pagina Statistiche. Aggiungerlo
       // obbliga a ricollegare l'account: i permessi si concedono al consenso.
       "read_insights",
-      // Risponditore automatico: leggere e rispondere ai commenti della Pagina
-      // e mandare la risposta privata a chi ha commentato.
+      // Risponditore automatico: leggere e rispondere ai commenti della Pagina.
       "pages_manage_engagement",
-      "pages_messaging",
+      ...(MESSAGING ? ["pages_messaging"] : []),
     ],
     scopeSeparator: ",",
   },
@@ -277,7 +289,7 @@ export const facebookModule: SocialModule = {
 
   comments: {
     publicReply: true,
-    privateReply: true,
+    privateReply: MESSAGING,
     privateReplyWindowHours: 24 * 7,
   },
 

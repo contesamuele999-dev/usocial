@@ -31,6 +31,10 @@ enterprise: solo un software leggero, veloce e facilmente estendibile.
   periodo, confronto fra piattaforme, post migliori e peggiori, e **consigli ricavati dai
   tuoi dati** (giorno e fascia oraria che rendono di più, formato vincente, quantità di
   hashtag, costanza di pubblicazione). I numeri si rileggono da soli ogni 6 ore.
+- **Risposte automatiche** — riconosce una parola chiave nei commenti («commenta PAUSA e
+  ti mando la guida») e risponde da sola: commento pubblico, messaggio privato a chi ha
+  scritto, o entrambi. Su Instagram, Facebook, Threads e YouTube. Regole spente di
+  default, prova a vuoto prima di armarle, registro di tutto ciò che è stato mandato.
 - **Cronologia** — storico pubblicazioni, errori API, tentativi, log completi.
 - **Impostazioni** — connessione OAuth degli account, verifica token, disconnessione,
   configurazione AI, backup/esportazione JSON.
@@ -187,6 +191,7 @@ utente e operano **solo** sui dati dell'utente loggato.
 | GET/POST | `/api/media` | libreria / upload |
 | POST | `/api/ai` | azioni AI ad hoc |
 | GET/POST | `/api/stats` | statistiche dei post pubblicati (POST = rilegge i numeri dalle piattaforme) |
+| GET/POST | `/api/autoreply/rules` · `/api/autoreply/run` | regole del risponditore ai commenti ed esecuzione (`?simulate=1` non manda niente) |
 | GET | `/api/platforms` | piattaforme + stato connessione |
 | GET | `/api/connect/:platform` | avvia OAuth per collegare un account all'utente |
 | POST | `/api/meta/deauthorize` · `/api/meta/data-deletion` | callback chiamati da Meta (pubblici, autenticati dalla firma del `signed_request`): scollegano l'account quando l'utente revoca l'accesso o chiede la cancellazione dei dati |

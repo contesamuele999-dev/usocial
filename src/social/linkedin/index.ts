@@ -6,6 +6,7 @@
 import type { Account } from "@/types";
 import {
   apiFetch,
+  InsightsUnavailableError,
   type PostMetrics,
   type PublishInput,
   type PublishMedia,
@@ -220,18 +221,37 @@ export const linkedinModule: SocialModule = {
 
   /**
    * Reazioni e commenti di uno share.
-   * Le impression di un post personale LinkedIn non sono esposte da nessuna
-   * API pubblica (esistono solo per le Pagine aziendali, con il prodotto
-   * "Community Management API"): restano a zero e la pagina Statistiche lo dice.
+   *
+   * In pratica: non disponibili. `socialActions` risponde 403
+   * `Not enough permissions` con i permessi di un profilo personale
+   * (`w_member_social` permette di pubblicare, non di rileggere), e le
+   * impression di un post personale non le espone nessuna API pubblica —
+   * esistono solo per le Pagine aziendali, con il prodotto "Community
+   * Management API".
+   *
+   * Si prova lo stesso, perché un'app con quel prodotto approvato le ottiene;
+   * ma un 403 diventa "non disponibile", non "ricollega l'account": quello
+   * manderebbe l'utente a rifare una connessione che è già a posto.
    */
   async insights(account: Account, externalId: string): Promise<PostMetrics> {
     const urn = encodeURIComponent(externalId);
-    const res = await apiFetch(`${API}/socialActions/${urn}`, {
-      headers: {
-        Authorization: `Bearer ${account.accessToken}`,
-        "X-Restli-Protocol-Version": "2.0.0",
-      },
-    });
+    let res: Record<string, unknown>;
+    try {
+      res = await apiFetch(`${API}/socialActions/${urn}`, {
+        headers: {
+          Authorization: `Bearer ${account.accessToken}`,
+          "X-Restli-Protocol-Version": "2.0.0",
+        },
+      });
+    } catch (err) {
+      const message = String(err);
+      if (message.includes("403") || message.includes("Not enough permissions")) {
+        throw new InsightsUnavailableError(
+          "LinkedIn non espone le statistiche dei post di un profilo personale: servirebbero una Pagina aziendale e il prodotto \"Community Management API\"."
+        );
+      }
+      throw err;
+    }
     const likes = (res.likesSummary as { totalLikes?: number } | undefined)?.totalLikes ?? 0;
     const comments =
       (res.commentsSummary as { totalFirstLevelComments?: number } | undefined)

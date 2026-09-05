@@ -3,7 +3,7 @@
  * Per aggiungere una piattaforma: creare src/social/<nome>/index.ts
  * che esporta un `SocialModule` e registrarlo in src/social/registry.ts.
  */
-import type { Account, Platform, PostTarget, TargetOptions } from "@/types";
+import type { Account, Platform, TargetOptions } from "@/types";
 
 /** Token restituiti dallo scambio OAuth. */
 export interface TokenSet {
@@ -127,6 +127,56 @@ export interface PostMetrics {
   followers?: number;
 }
 
+/**
+ * La piattaforma non espone (o non espone più) le statistiche di quel
+ * contenuto, e non c'è niente che l'utente possa fare: un profilo personale
+ * LinkedIn, una storia Instagram scaduta.
+ *
+ * Va distinta da un errore qualunque: la pagina Statistiche altrimenti
+ * consiglia di ricollegare l'account, cioè manda a sbattere contro un muro.
+ */
+export class InsightsUnavailableError extends Error {
+  readonly unavailable = true;
+  constructor(message: string) {
+    super(message);
+    this.name = "InsightsUnavailableError";
+  }
+}
+
+/** Contesto del post di cui si chiedono le metriche (il tipo cambia l'endpoint). */
+export interface InsightsContext {
+  /** `feed`, `reel`, `story`, … così come scelto al momento della pubblicazione. */
+  postType?: string | null;
+}
+
+/** Un commento (o una risposta) letto da una piattaforma. */
+export interface SocialComment {
+  id: string;
+  text: string;
+  /** Nome o username mostrato accanto al commento. */
+  author: string;
+  /**
+   * Id dell'autore sulla piattaforma. Serve a NON rispondere a se stessi: la
+   * risposta pubblica che scriviamo è a sua volta un commento, e senza questo
+   * controllo il risponditore si innescherebbe da solo all'infinito.
+   */
+  authorId?: string;
+  createdAt: string;
+}
+
+/** Cosa sa fare una piattaforma con i commenti (assente = niente). */
+export interface CommentCapabilities {
+  /** Risposta pubblica sotto al commento. */
+  publicReply: boolean;
+  /** Messaggio privato agganciato al commento (il "private reply" di Meta). */
+  privateReply: boolean;
+  /**
+   * Entro quante ore dal commento la piattaforma accetta ancora il messaggio
+   * privato. Meta: 7 giorni, e uno solo per commento.
+   */
+  privateReplyWindowHours?: number;
+}
+
 export interface VerifyResult {
   ok: boolean;
   message: string;
@@ -155,7 +205,20 @@ export interface SocialModule {
    * Può lanciare: la pagina Statistiche registra l'errore e mostra il post
    * senza numeri, invece di fallire in blocco.
    */
-  insights?(account: Account, externalId: string, target?: PostTarget): Promise<PostMetrics>;
+  insights?(
+    account: Account,
+    externalId: string,
+    context?: InsightsContext
+  ): Promise<PostMetrics>;
+
+  /** Cosa sa fare con i commenti; assente = il risponditore la salta. */
+  comments?: CommentCapabilities;
+  /** Commenti di un post pubblicato (`externalId` è l'id restituito da `publish`). */
+  listComments?(account: Account, externalId: string): Promise<SocialComment[]>;
+  /** Risponde pubblicamente sotto al commento. */
+  replyToComment?(account: Account, commentId: string, message: string): Promise<void>;
+  /** Manda un messaggio privato alla persona che ha scritto il commento. */
+  privateReply?(account: Account, comment: SocialComment, message: string): Promise<void>;
 }
 
 /** Helper: fetch con errore leggibile se la risposta non è 2xx. */

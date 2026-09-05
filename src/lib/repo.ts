@@ -965,6 +965,8 @@ export interface MetricTarget {
   platform: Platform;
   externalId: string;
   publishedAt: string;
+  /** Tipo scelto alla pubblicazione: cambia l'endpoint delle metriche (le storie). */
+  postType: string | null;
 }
 
 /**
@@ -974,7 +976,7 @@ export interface MetricTarget {
 export function metricTargets(sinceIso: string, userId?: number): MetricTarget[] {
   const rows = getDb()
     .prepare(
-      `SELECT t.id AS target_id, t.post_id, p.user_id, t.platform, t.external_id, t.published_at
+      `SELECT t.id AS target_id, t.post_id, p.user_id, t.platform, t.external_id, t.published_at, t.post_type
          FROM post_targets t
          JOIN posts p ON p.id = t.post_id
         WHERE t.status = 'published'
@@ -991,6 +993,7 @@ export function metricTargets(sinceIso: string, userId?: number): MetricTarget[]
     platform: r.platform as Platform,
     externalId: r.external_id as string,
     publishedAt: r.published_at as string,
+    postType: (r.post_type as string | null) ?? null,
   }));
 }
 
@@ -1017,6 +1020,8 @@ export interface MetricRow {
   clicks: number | null;
   followers: number | null;
   error: string | null;
+  /** true = la piattaforma non espone quelle statistiche: non c'è nulla da sistemare. */
+  unavailable: boolean;
   fetchedAt: string | null;
 }
 
@@ -1030,7 +1035,8 @@ export function saveMetrics(
     "views" | "reach" | "likes" | "comments" | "shares" | "saves" | "clicks" | "followers",
     number | undefined
   >> | null,
-  error?: string
+  error?: string,
+  unavailable = false
 ): void {
   const m = metrics || {};
   const num = (v: number | undefined) => (typeof v === "number" && Number.isFinite(v) ? v : null);
@@ -1038,14 +1044,15 @@ export function saveMetrics(
     .prepare(
       `INSERT INTO post_metrics
          (target_id, post_id, user_id, platform, views, reach, likes, comments, shares, saves,
-          clicks, followers, error, fetched_at)
+          clicks, followers, error, unavailable, fetched_at)
        VALUES (@targetId, @postId, @userId, @platform, @views, @reach, @likes, @comments, @shares,
-               @saves, @clicks, @followers, @error, @fetchedAt)
+               @saves, @clicks, @followers, @error, @unavailable, @fetchedAt)
        ON CONFLICT(target_id) DO UPDATE SET
          views = excluded.views, reach = excluded.reach, likes = excluded.likes,
          comments = excluded.comments, shares = excluded.shares, saves = excluded.saves,
          clicks = excluded.clicks, followers = excluded.followers,
-         error = excluded.error, fetched_at = excluded.fetched_at`
+         error = excluded.error, unavailable = excluded.unavailable,
+         fetched_at = excluded.fetched_at`
     )
     .run({
       targetId: target.targetId,
@@ -1061,6 +1068,7 @@ export function saveMetrics(
       clicks: num(m.clicks),
       followers: num(m.followers),
       error: error ? error.slice(0, 500) : null,
+      unavailable: unavailable ? 1 : 0,
       fetchedAt: new Date().toISOString(),
     });
 }
@@ -1076,7 +1084,7 @@ export function metricRows(userId: number, sinceIso: string): MetricRow[] {
       `SELECT t.id AS target_id, t.post_id, t.platform, t.post_type, t.external_url,
               t.published_at, p.title, p.body, p.hashtags,
               m.views, m.reach, m.likes, m.comments, m.shares, m.saves, m.clicks,
-              m.followers, m.error, m.fetched_at,
+              m.followers, m.error, m.unavailable, m.fetched_at,
               (SELECT COUNT(*) FROM post_media pm WHERE pm.post_id = p.id) AS media_count,
               (SELECT COUNT(*) FROM post_media pm JOIN media md ON md.id = pm.media_id
                 WHERE pm.post_id = p.id AND md.mime LIKE 'video/%') AS video_count
@@ -1108,6 +1116,7 @@ export function metricRows(userId: number, sinceIso: string): MetricRow[] {
     clicks: (r.clicks as number | null) ?? null,
     followers: (r.followers as number | null) ?? null,
     error: (r.error as string | null) ?? null,
+    unavailable: !!(r.unavailable as number | null),
     fetchedAt: (r.fetched_at as string | null) ?? null,
   }));
 }
@@ -1118,4 +1127,194 @@ export function lastMetricsFetch(userId: number): string | null {
     .prepare("SELECT MAX(fetched_at) AS last FROM post_metrics WHERE user_id = ?")
     .get(userId) as { last: string | null } | undefined;
   return row?.last ?? null;
+}
+
+// ---------- RISPONDITORE AUTOMATICO AI COMMENTI ----------
+
+export type MatchMode = "word" | "contains";
+
+export interface AutoReplyRule {
+  id: number;
+  userId: number;
+  name: string;
+  keyword: string;
+  matchMode: MatchMode;
+  /** Piattaforme su cui vale; vuoto = tutte quelle collegate. */
+  platforms: Platform[];
+  publicReply: string;
+  privateReply: string;
+  enabled: boolean;
+  createdAt: string;
+}
+
+export interface AutoReplyRuleInput {
+  name: string;
+  keyword: string;
+  matchMode: MatchMode;
+  platforms: Platform[];
+  publicReply: string;
+  privateReply: string;
+  enabled: boolean;
+}
+
+function rowToRule(r: Record<string, unknown>): AutoReplyRule {
+  const raw = (r.platforms as string) || "";
+  return {
+    id: r.id as number,
+    userId: r.user_id as number,
+    name: (r.name as string) || "",
+    keyword: r.keyword as string,
+    matchMode: ((r.match_mode as string) || "word") as MatchMode,
+    platforms: raw ? (raw.split(",").filter(Boolean) as Platform[]) : [],
+    publicReply: (r.public_reply as string) || "",
+    privateReply: (r.private_reply as string) || "",
+    enabled: !!(r.enabled as number),
+    createdAt: r.created_at as string,
+  };
+}
+
+export function listAutoReplyRules(userId: number): AutoReplyRule[] {
+  const rows = getDb()
+    .prepare("SELECT * FROM autoreply_rules WHERE user_id = ? ORDER BY id")
+    .all(userId) as Record<string, unknown>[];
+  return rows.map(rowToRule);
+}
+
+export function createAutoReplyRule(userId: number, input: AutoReplyRuleInput): AutoReplyRule {
+  const info = getDb()
+    .prepare(
+      `INSERT INTO autoreply_rules
+         (user_id, name, keyword, match_mode, platforms, public_reply, private_reply, enabled)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      userId,
+      input.name,
+      input.keyword,
+      input.matchMode,
+      input.platforms.join(","),
+      input.publicReply,
+      input.privateReply,
+      input.enabled ? 1 : 0
+    );
+  return listAutoReplyRules(userId).find((r) => r.id === Number(info.lastInsertRowid))!;
+}
+
+export function updateAutoReplyRule(
+  id: number,
+  userId: number,
+  input: AutoReplyRuleInput
+): AutoReplyRule | null {
+  const changed = getDb()
+    .prepare(
+      `UPDATE autoreply_rules
+          SET name = ?, keyword = ?, match_mode = ?, platforms = ?,
+              public_reply = ?, private_reply = ?, enabled = ?
+        WHERE id = ? AND user_id = ?`
+    )
+    .run(
+      input.name,
+      input.keyword,
+      input.matchMode,
+      input.platforms.join(","),
+      input.publicReply,
+      input.privateReply,
+      input.enabled ? 1 : 0,
+      id,
+      userId
+    ).changes;
+  return changed ? listAutoReplyRules(userId).find((r) => r.id === id) || null : null;
+}
+
+export function deleteAutoReplyRule(id: number, userId: number): boolean {
+  return (
+    getDb().prepare("DELETE FROM autoreply_rules WHERE id = ? AND user_id = ?").run(id, userId)
+      .changes > 0
+  );
+}
+
+export type CommentReplyStatus = "replied" | "skipped" | "failed" | "simulated";
+
+export interface CommentReplyRow {
+  platform: Platform;
+  commentId: string;
+  ruleId: number | null;
+  postId: number | null;
+  author: string;
+  text: string;
+  status: CommentReplyStatus;
+  detail: string | null;
+  createdAt: string;
+}
+
+/**
+ * Id dei commenti già esaminati su una piattaforma, per non riesaminarli.
+ * È il cuore dell'idempotenza: il motore rilegge gli stessi commenti a ogni
+ * giro e senza questo insieme scriverebbe di nuovo alla stessa persona.
+ */
+export function seenCommentIds(userId: number, platform: Platform): Set<string> {
+  const rows = getDb()
+    .prepare("SELECT comment_id FROM comment_replies WHERE user_id = ? AND platform = ?")
+    .all(userId, platform) as { comment_id: string }[];
+  return new Set(rows.map((r) => r.comment_id));
+}
+
+/**
+ * Registra l'esito per un commento. `INSERT OR IGNORE`: se due esecuzioni si
+ * accavallassero, la prima vince e la seconda non scrive un doppione.
+ */
+export function recordCommentReply(row: {
+  userId: number;
+  platform: Platform;
+  commentId: string;
+  ruleId: number | null;
+  targetId: number | null;
+  postId: number | null;
+  author: string;
+  text: string;
+  status: CommentReplyStatus;
+  detail?: string | null;
+}): boolean {
+  return (
+    getDb()
+      .prepare(
+        `INSERT OR IGNORE INTO comment_replies
+           (platform, comment_id, user_id, rule_id, target_id, post_id, author, text, status, detail)
+         VALUES (@platform, @commentId, @userId, @ruleId, @targetId, @postId, @author, @text, @status, @detail)`
+      )
+      .run({
+        ...row,
+        text: row.text.slice(0, 500),
+        detail: row.detail ? row.detail.slice(0, 500) : null,
+      }).changes > 0
+  );
+}
+
+/** Ultime righe del registro del risponditore (pagina Risposte automatiche). */
+export function listCommentReplies(userId: number, limit = 50): CommentReplyRow[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT platform, comment_id, rule_id, post_id, author, text, status, detail, created_at
+         FROM comment_replies WHERE user_id = ?
+        ORDER BY created_at DESC LIMIT ?`
+    )
+    .all(userId, Math.min(200, limit)) as Record<string, unknown>[];
+  return rows.map((r) => ({
+    platform: r.platform as Platform,
+    commentId: r.comment_id as string,
+    ruleId: (r.rule_id as number | null) ?? null,
+    postId: (r.post_id as number | null) ?? null,
+    author: (r.author as string) || "",
+    text: (r.text as string) || "",
+    status: r.status as CommentReplyStatus,
+    detail: (r.detail as string | null) ?? null,
+    createdAt: r.created_at as string,
+  }));
+}
+
+/** Cancella le righe di una simulazione, così una prova non blocca il giro vero. */
+export function clearSimulatedReplies(userId: number): number {
+  return getDb()
+    .prepare("DELETE FROM comment_replies WHERE user_id = ? AND status = 'simulated'")
+    .run(userId).changes;
 }

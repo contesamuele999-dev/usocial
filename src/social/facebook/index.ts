@@ -9,6 +9,7 @@ import {
   apiFetch,
   type PostMetrics,
   type PublishInput,
+  type SocialComment,
   type PublishMedia,
   type PublishResult,
   type SocialModule,
@@ -146,6 +147,10 @@ export const facebookModule: SocialModule = {
       // Impression e click del post nella pagina Statistiche. Aggiungerlo
       // obbliga a ricollegare l'account: i permessi si concedono al consenso.
       "read_insights",
+      // Risponditore automatico: leggere e rispondere ai commenti della Pagina
+      // e mandare la risposta privata a chi ha commentato.
+      "pages_manage_engagement",
+      "pages_messaging",
     ],
     scopeSeparator: ",",
   },
@@ -215,24 +220,31 @@ export const facebookModule: SocialModule = {
   /**
    * Metriche di un post della Pagina.
    *
-   * I contatori pubblici arrivano con le `summary` dei campi (una sola
-   * chiamata), le impression dagli insight della Pagina. Se gli insight non
-   * sono concessi si tiene comunque il resto: meglio numeri parziali che
-   * nessun numero.
+   * Le due chiamate sono indipendenti: i contatori pubblici richiedono
+   * `pages_read_engagement`, gli insight `read_insights`, e i due permessi si
+   * concedono separatamente. Prima, se mancava il primo, si perdevano anche
+   * impression e copertura che il token poteva benissimo leggere.
    */
   async insights(account: Account, externalId: string): Promise<PostMetrics> {
     const { pageId, pageToken } = pageAuth(account);
     const out: PostMetrics = {};
+    let letto = false;
+    let primoErrore: unknown = null;
 
-    const base = await apiFetch(
-      `${GRAPH}/${externalId}?fields=likes.summary(true).limit(0),comments.summary(true).limit(0),shares&access_token=${pageToken}`
-    );
-    const summary = (k: string) =>
-      ((base[k] as { summary?: { total_count?: number } } | undefined)?.summary?.total_count) ??
-      undefined;
-    out.likes = summary("likes");
-    out.comments = summary("comments");
-    out.shares = (base.shares as { count?: number } | undefined)?.count ?? undefined;
+    try {
+      const base = await apiFetch(
+        `${GRAPH}/${externalId}?fields=likes.summary(true).limit(0),comments.summary(true).limit(0),shares&access_token=${pageToken}`
+      );
+      const summary = (k: string) =>
+        ((base[k] as { summary?: { total_count?: number } } | undefined)?.summary?.total_count) ??
+        undefined;
+      out.likes = summary("likes");
+      out.comments = summary("comments");
+      out.shares = (base.shares as { count?: number } | undefined)?.count ?? undefined;
+      letto = true;
+    } catch (err) {
+      primoErrore = err;
+    }
 
     try {
       const res = await apiFetch(
@@ -243,9 +255,14 @@ export const facebookModule: SocialModule = {
       out.views = val("post_impressions");
       out.reach = val("post_impressions_unique");
       out.clicks = val("post_clicks");
-    } catch {
-      /* insight non concessi: restano i contatori pubblici */
+      letto = true;
+    } catch (err) {
+      primoErrore = primoErrore ?? err;
     }
+
+    // Nessuna delle due ha funzionato: è un problema di permessi vero, va
+    // riportato con il messaggio originale di Meta (dice quale manca).
+    if (!letto) throw primoErrore;
 
     try {
       const page = await apiFetch(
@@ -256,6 +273,46 @@ export const facebookModule: SocialModule = {
       /* niente follower della Pagina */
     }
     return out;
+  },
+
+  comments: {
+    publicReply: true,
+    privateReply: true,
+    privateReplyWindowHours: 24 * 7,
+  },
+
+  async listComments(account: Account, externalId: string): Promise<SocialComment[]> {
+    const { pageToken } = pageAuth(account);
+    const res = await apiFetch(
+      `${GRAPH}/${externalId}/comments?fields=id,message,created_time,from{id,name}&limit=100&access_token=${pageToken}`
+    );
+    const data = (res.data as Record<string, unknown>[]) || [];
+    return data.map((c) => {
+      const from = c.from as { id?: string; name?: string } | undefined;
+      return {
+        id: c.id as string,
+        text: (c.message as string) || "",
+        author: from?.name || "",
+        authorId: from?.id,
+        createdAt: (c.created_time as string) || new Date().toISOString(),
+      };
+    });
+  },
+
+  async replyToComment(account: Account, commentId: string, message: string) {
+    const { pageToken } = pageAuth(account);
+    await apiFetch(`${GRAPH}/${commentId}/comments`, {
+      method: "POST",
+      body: new URLSearchParams({ message, access_token: pageToken }),
+    });
+  },
+
+  async privateReply(account: Account, comment: SocialComment, message: string) {
+    const { pageToken } = pageAuth(account);
+    await apiFetch(`${GRAPH}/${comment.id}/private_replies`, {
+      method: "POST",
+      body: new URLSearchParams({ message, access_token: pageToken }),
+    });
   },
 
   /**

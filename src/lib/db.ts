@@ -168,7 +168,50 @@ CREATE TABLE IF NOT EXISTS post_metrics (
   clicks INTEGER,
   followers INTEGER,
   error TEXT,
+  -- 1 = la piattaforma non espone quelle statistiche e non le esporra' mai
+  -- (profilo personale LinkedIn, storia Instagram scaduta). Serve a non
+  -- consigliare all'utente di ricollegare un account che va benissimo.
+  unavailable INTEGER NOT NULL DEFAULT 0,
   fetched_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+-- Regole del risponditore automatico ai commenti ("commenta PAUSA e ti mando
+-- la guida"). Nascono DISATTIVATE: una regola che parte da sola scriverebbe a
+-- persone vere prima che l'utente abbia visto cosa dice.
+CREATE TABLE IF NOT EXISTS autoreply_rules (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL DEFAULT '',
+  keyword TEXT NOT NULL,
+  -- 'word' = parola intera (PAUSA non scatta su "pausapranzo"), 'contains' = ovunque
+  match_mode TEXT NOT NULL DEFAULT 'word',
+  -- piattaforme separate da virgola; vuoto = tutte quelle collegate
+  platforms TEXT NOT NULL DEFAULT '',
+  public_reply TEXT NOT NULL DEFAULT '',
+  private_reply TEXT NOT NULL DEFAULT '',
+  enabled INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+-- Commenti gia' esaminati. La chiave primaria (piattaforma, commento) e' cio'
+-- che rende il risponditore idempotente: il motore rilegge gli stessi commenti
+-- a ogni giro e senza questa riga scriverebbe di nuovo alla stessa persona a
+-- ogni passaggio. Meta, per giunta, accetta UN SOLO messaggio privato per
+-- commento: il secondo tentativo sarebbe comunque un errore.
+CREATE TABLE IF NOT EXISTS comment_replies (
+  platform TEXT NOT NULL,
+  comment_id TEXT NOT NULL,
+  user_id INTEGER,
+  rule_id INTEGER,
+  target_id INTEGER,
+  post_id INTEGER,
+  author TEXT NOT NULL DEFAULT '',
+  text TEXT NOT NULL DEFAULT '',
+  -- 'replied' | 'skipped' (nessuna regola) | 'failed' | 'simulated'
+  status TEXT NOT NULL DEFAULT 'skipped',
+  detail TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  PRIMARY KEY (platform, comment_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_posts_user ON posts(user_id);
@@ -186,6 +229,8 @@ CREATE INDEX IF NOT EXISTS idx_post_media_media ON post_media(media_id);
 CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys(user_id);
 CREATE INDEX IF NOT EXISTS idx_metrics_user ON post_metrics(user_id);
 CREATE INDEX IF NOT EXISTS idx_metrics_post ON post_metrics(post_id);
+CREATE INDEX IF NOT EXISTS idx_autoreply_user ON autoreply_rules(user_id);
+CREATE INDEX IF NOT EXISTS idx_comment_replies_user ON comment_replies(user_id, created_at);
 `;
 
 function tableExists(db: Database.Database, table: string): boolean {
@@ -227,6 +272,9 @@ function migrate(db: Database.Database) {
   }
   if (tableExists(db, "post_targets") && !hasColumn(db, "post_targets", "options")) {
     db.exec("ALTER TABLE post_targets ADD COLUMN options TEXT");
+  }
+  if (tableExists(db, "post_metrics") && !hasColumn(db, "post_metrics", "unavailable")) {
+    db.exec("ALTER TABLE post_metrics ADD COLUMN unavailable INTEGER NOT NULL DEFAULT 0");
   }
   if (tableExists(db, "accounts") && !hasColumn(db, "accounts", "user_id")) {
     db.exec("DROP TABLE accounts");

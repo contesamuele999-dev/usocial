@@ -39,5 +39,8 @@ export function platformInfo() {
     displayName: m.displayName,
     color: m.color,
     limits: m.limits,
+    // La UI del risponditore deve sapere chi sa mandare un messaggio privato
+    // e chi solo rispondere pubblicamente (Threads e YouTube non hanno DM).
+    comments: m.comments ?? null,
   }));
 }

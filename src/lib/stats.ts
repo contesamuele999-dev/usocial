@@ -21,6 +21,7 @@ import {
   type MetricRow,
 } from "./repo";
 import { allModules, getModule } from "@/social/registry";
+import { InsightsUnavailableError } from "@/social/types";
 import type { Platform } from "@/types";
 
 /** Finestra predefinita delle statistiche (giorni). */
@@ -68,6 +69,12 @@ export interface PlatformStats extends Totals {
   missing: number;
   /** Motivo dell'ultimo errore di lettura, se c'è stato. */
   error: string | null;
+  /**
+   * true = i post senza numeri sono tali perché la piattaforma non li espone,
+   * non perché manchi un permesso. Cambia il consiglio: nel primo caso non
+   * c'è niente da fare, nel secondo si ricollega l'account.
+   */
+  unavailable: boolean;
 }
 
 export interface SeriesPoint {
@@ -179,12 +186,15 @@ export async function refreshMetrics(userId: number, days = DEFAULT_DAYS): Promi
 
     res.checked++;
     try {
-      const metrics = await mod.insights(account, target.externalId);
+      const metrics = await mod.insights(account, target.externalId, {
+        postType: target.postType,
+      });
       saveMetrics(target, metrics);
       res.updated++;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      saveMetrics(target, null, message);
+      const unavailable = err instanceof InsightsUnavailableError;
+      saveMetrics(target, null, message, unavailable);
       res.failed++;
       if (!reported.has(target.platform)) {
         reported.add(target.platform);
@@ -366,9 +376,15 @@ export function buildTips(rows: MetricRow[], platforms: PlatformStats[]): Tip[] 
   // 9) Piattaforme che pubblicano ma non restituiscono numeri: è un problema di
   //    permessi, non di risultati, e va detto con chiarezza.
   for (const p of platforms) {
-    if (p.posts > 0 && p.missing === p.posts && p.error) {
-      tips.push({ id: "noMetrics", level: "warn", vars: { platform: p.displayName } });
-    }
+    if (p.posts === 0 || p.missing !== p.posts || !p.error) continue;
+    tips.push({
+      // "Ricollega l'account" sarebbe un consiglio sbagliato quando la
+      // piattaforma quelle statistiche non le espone proprio: si perde tempo
+      // a rifare una connessione che è già a posto.
+      id: p.unavailable ? "noMetricsUnsupported" : "noMetrics",
+      level: p.unavailable ? "info" : "warn",
+      vars: { platform: p.displayName },
+    });
   }
 
   return tips;
@@ -390,6 +406,7 @@ export function buildStats(userId: number, days = DEFAULT_DAYS): StatsPayload {
       connected: !!getAccount(userId, mod.platform),
       missing: 0,
       error: null,
+      unavailable: true, // smentito dal primo post davvero rimediabile
     });
   }
 
@@ -400,7 +417,11 @@ export function buildStats(userId: number, days = DEFAULT_DAYS): StatsPayload {
     const p = perPlatform.get(r.platform);
     if (p) {
       addRow(p, r);
-      if (!hasMetrics(r)) p.missing++;
+      if (!hasMetrics(r)) {
+        p.missing++;
+        // Basta un post recuperabile perché la piattaforma torni "da sistemare".
+        if (!r.unavailable) p.unavailable = false;
+      }
       if (r.error && !p.error) p.error = r.error;
     }
 

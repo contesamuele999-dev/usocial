@@ -16,6 +16,7 @@ import {
   type PostMetrics,
   type PublishInput,
   type PublishResult,
+  type SocialComment,
   type SocialModule,
   type TokenSet,
 } from "../types";
@@ -79,7 +80,13 @@ export const threadsModule: SocialModule = {
     // Il consenso si chiede su threads.net, non su facebook.com.
     authorizeUrl: "https://threads.net/oauth/authorize",
     tokenUrl: `${ROOT}/oauth/access_token`,
-    scopes: ["threads_basic", "threads_content_publish", "threads_manage_insights"],
+    scopes: [
+      "threads_basic",
+      "threads_content_publish",
+      "threads_manage_insights",
+      // Risponditore automatico: leggere le risposte a un post e rispondere.
+      "threads_manage_replies",
+    ],
     scopeSeparator: ",",
   },
 
@@ -224,6 +231,48 @@ export const threadsModule: SocialModule = {
       refreshToken: account.refreshToken,
       expiresIn: (r.expires_in as number) || 60 * 24 * 3600,
     };
+  },
+
+  comments: {
+    publicReply: true,
+    // Threads non ha una API per i messaggi privati: qui la guida si manda
+    // solo con una risposta pubblica.
+    privateReply: false,
+  },
+
+  async listComments(account: Account, externalId: string): Promise<SocialComment[]> {
+    const { token } = threadsUser(account);
+    const res = await apiFetch(
+      `${API}/${externalId}/replies?fields=id,text,username,timestamp&access_token=${token}`
+    );
+    const data = (res.data as Record<string, unknown>[]) || [];
+    return data.map((c) => ({
+      id: c.id as string,
+      text: (c.text as string) || "",
+      author: (c.username as string) || "",
+      createdAt: (c.timestamp as string) || new Date().toISOString(),
+    }));
+  },
+
+  /**
+   * Su Threads una risposta è un post come gli altri, con `reply_to_id`:
+   * stessi due passaggi della pubblicazione normale (container + publish).
+   */
+  async replyToComment(account: Account, commentId: string, message: string) {
+    const { userId, token } = threadsUser(account);
+    const created = await apiFetch(`${API}/${userId}/threads`, {
+      method: "POST",
+      body: new URLSearchParams({
+        media_type: "TEXT",
+        text: message.slice(0, 500),
+        reply_to_id: commentId,
+        access_token: token,
+      }),
+    });
+    await apiFetch(`${API}/${userId}/threads_publish`, {
+      method: "POST",
+      body: new URLSearchParams({ creation_id: created.id as string, access_token: token }),
+    });
   },
 
   /** Metriche del singolo post (richiede lo scope threads_manage_insights). */

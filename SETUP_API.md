@@ -167,6 +167,59 @@ uSocial, con un token ormai morto.
 
 ---
 
+## Quale famiglia di permessi Instagram (la trappola dei nomi)
+
+Meta ha **due** API Instagram diverse, con nomi di permesso quasi identici:
+
+| | Come si accede | Nomi dei permessi |
+|---|---|---|
+| **Instagram API con Facebook Login** ← *quella che usa uSocial* | consenso su facebook.com, account IG Business collegato a una Pagina, chiamate su `graph.facebook.com` | `instagram_basic`, `instagram_content_publish`, `instagram_manage_insights`, `instagram_manage_comments`, `instagram_manage_messages` |
+| Instagram API con Instagram Login | consenso su instagram.com, senza Pagina, chiamate su `graph.instagram.com` | `instagram_business_basic`, `instagram_business_content_publish`, `instagram_business_manage_insights`, `instagram_business_manage_comments`, … |
+
+uSocial manda l'utente su `facebook.com/…/dialog/oauth` e ricava l'account IG da
+`me/accounts → instagram_business_account`: è la **prima** riga. Quindi servono i nomi
+**senza** il prefisso `business`. Quelli con `instagram_business_*` appartengono all'altra
+API e con questo flusso non fanno niente.
+
+### `pages_messaging` non compare nell'elenco
+
+È normale: non sta fra i permessi delle Pagine. Compare solo dopo aver aggiunto all'app il
+prodotto **Messenger** (o il caso d'uso *Messaggistica*), perché è lì che vive. Stessa cosa
+per `instagram_manage_messages`, che arriva con **Messenger → Impostazioni Instagram**.
+
+Se non vuoi (o non puoi) aggiungere Messenger: lascia vuoto il campo «messaggio privato»
+nella regola e usa la sola risposta pubblica. Il risponditore tratta le due azioni come
+indipendenti, quindi il permesso mancante sul DM **non** blocca la risposta pubblica.
+
+---
+
+## Risponditore automatico ai commenti
+
+La pagina **Risposte automatiche** riconosce una parola chiave nei commenti (il classico
+«commenta PAUSA e ti mando la guida») e risponde da sola.
+
+| Piattaforma | Risposta pubblica | Messaggio privato | Permessi da aggiungere |
+|---|---|---|---|
+| Instagram | ✅ | ✅ | `instagram_manage_comments`, `instagram_manage_messages` |
+| Facebook | ✅ | ✅ | `pages_manage_engagement`, `pages_messaging` |
+| Threads | ✅ | ❌ non esiste una API DM | `threads_manage_replies` |
+| YouTube | ✅ | ❌ | `youtube.force-ssl` |
+| TikTok, LinkedIn | ❌ | ❌ | — |
+
+Sono già richiesti al consenso: basta **ricollegare** gli account.
+
+Limiti che vengono da Meta, non da uSocial:
+- il messaggio privato agganciato a un commento si può mandare **entro 7 giorni** e **una
+  volta sola per commento**. Passata la finestra, uSocial usa la sola risposta pubblica
+  invece di collezionare errori;
+- il motore controlla i post degli **ultimi 7 giorni ogni 5 minuti**, con un tetto di 30
+  risposte per giro perché un post virale non svuoti la quota di chiamate.
+
+Ogni regola nasce **spenta**, e il pulsante «Prova a vuoto» mostra cosa verrebbe mandato
+senza mandarlo: qui in fondo si scrive a persone vere.
+
+---
+
 ## Riepilogo Redirect URI (copia-incolla)
 
 | Piattaforma | Redirect URI da inserire nel portale developer |
@@ -197,16 +250,25 @@ Le piattaforme non le danno con gli stessi permessi della pubblicazione:
 
 | Piattaforma | Cosa serve | Cosa si ottiene |
 |---|---|---|
-| Instagram | scope `instagram_manage_insights` (già richiesto: **ricollega l'account**) | visualizzazioni, copertura, like, commenti, salvataggi, condivisioni |
+| Instagram | scope `instagram_manage_insights` (già richiesto: **ricollega l'account**) | visualizzazioni, copertura, like, commenti, salvataggi, condivisioni. ⚠️ Le **storie** hanno metriche loro e spariscono dall'API dopo 24 ore: passato quel tempo restano senza numeri, ed è normale |
 | Facebook | scope `read_insights` (già richiesto: **ricollega l'account**) | impression, copertura, click, like, commenti, condivisioni |
 | Threads | scope `threads_manage_insights` | visualizzazioni, like, risposte, repost e citazioni |
 | YouTube | niente in più (basta `youtube.readonly`) | visualizzazioni, like, commenti, iscritti |
 | TikTok | scope `video.list`, da abilitare **prima** nell'app su developers.tiktok.com, poi `TIKTOK_SCOPE_VIDEO_LIST=true` nel `.env` e **ricollega l'account** | visualizzazioni, like, commenti, condivisioni |
-| LinkedIn | niente in più | solo reazioni e commenti: le impression di un profilo personale non sono esposte da nessuna API pubblica |
+| LinkedIn | non ottenibili su un profilo personale | `socialActions` risponde 403 con i permessi di un profilo (`w_member_social` serve a pubblicare, non a rileggere) e le impression esistono solo per le Pagine aziendali, con il prodotto "Community Management API". La pagina lo segnala come «statistiche non disponibili», non come permesso mancante |
 
 Dopo aver cambiato gli scope, gli account **già collegati continuano a usare i vecchi
 permessi**: vanno disconnessi e ricollegati da *Impostazioni*, altrimenti le statistiche
-restano vuote e la pagina lo segnala con "permessi mancanti".
+restano vuote.
+
+La pagina distingue i due casi, perché il rimedio è diverso:
+- «manca il permesso, ricollega l'account» → c'è qualcosa da fare;
+- «statistiche non disponibili» → la piattaforma quei numeri non li dà (LinkedIn su
+  profilo personale, storie Instagram scadute) e la connessione è a posto.
+
+Se Facebook risponde `(#10) requires the 'pages_read_engagement' permission` anche dopo
+aver ricollegato, controlla che quel permesso risulti concesso in *developers.facebook.com
+→ Revisione dell'app → Autorizzazioni*: al consenso si possono deselezionare le Pagine.
 
 I numeri si aggiornano da soli ogni 6 ore; il pulsante **Aggiorna dai social** li rilegge
 subito.

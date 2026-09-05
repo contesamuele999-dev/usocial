@@ -7,6 +7,7 @@
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { logger } from "./logger";
+import { SESSION_COOKIE } from "./constants";
 
 export class AppError extends Error {
   constructor(
@@ -39,7 +40,17 @@ export function withErrorHandling<Ctx>(scope: string, handler: Handler<Ctx>): Ha
         );
       }
       if (err instanceof AppError) {
-        return NextResponse.json({ error: err.message, detail: err.detail }, { status: err.status });
+        const res = NextResponse.json(
+          { error: err.message, detail: err.detail },
+          { status: err.status }
+        );
+        // 401 = il cookie c'è ma la sessione non vale più (scaduta, database
+        // ripristinato, logout da un altro dispositivo). Va CANCELLATO qui,
+        // altrimenti si innesca un giro infinito: il client manda a /login, il
+        // middleware vede il cookie e rimanda alla dashboard, che richiama le
+        // API, che rispondono di nuovo 401… e la pagina non si apre mai.
+        if (err.status === 401) res.cookies.set(SESSION_COOKIE, "", { path: "/", maxAge: 0 });
+        return res;
       }
       const message = err instanceof Error ? err.message : String(err);
       logger.error(scope, message, err instanceof Error ? err.stack : undefined);

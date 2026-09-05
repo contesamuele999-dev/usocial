@@ -1,7 +1,7 @@
 /**
  * Helper per il frontend: chiamate API tipizzate + tipi condivisi con il backend.
  */
-import type { PlatformLimits } from "@/social/types";
+import type { CommentCapabilities, PlatformLimits } from "@/social/types";
 import type { MediaItem, Platform } from "@/types";
 
 /** Info piattaforma restituita da GET /api/platforms. */
@@ -15,6 +15,8 @@ export interface PlatformInfo {
   expiresAt: string | null;
   /** true = il token viene rinnovato automaticamente prima della scadenza. */
   autoRenew?: boolean;
+  /** Cosa sa fare con i commenti; null = il risponditore automatico la salta. */
+  comments?: CommentCapabilities | null;
 }
 
 /** fetch con gestione errori uniforme: lancia Error con il messaggio del server. */

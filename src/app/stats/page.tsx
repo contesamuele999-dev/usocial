@@ -33,6 +33,7 @@ interface PlatformStats extends Totals {
   connected: boolean;
   missing: number;
   error: string | null;
+  unavailable: boolean;
 }
 
 interface SeriesPoint {
@@ -372,8 +373,16 @@ export default function StatsPage() {
                         {p.displayName}
                       </span>
                       {p.missing > 0 && (
-                        <span className="text-[11px] text-amber-600" title={p.error || ""}>
-                          {t("stats.missingMetrics", { n: p.missing })}
+                        // Grigio, non ambra, quando non c'è niente da
+                        // sistemare: un avviso colorato su un fatto immutabile
+                        // è solo rumore.
+                        <span
+                          className={`text-[11px] ${p.unavailable ? "text-gray-400" : "text-amber-600"}`}
+                          title={p.error || ""}
+                        >
+                          {p.unavailable
+                            ? t("stats.missingUnsupported")
+                            : t("stats.missingMetrics", { n: p.missing })}
                         </span>
                       )}
                     </td>

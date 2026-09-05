@@ -29,6 +29,7 @@ function row(over: Partial<MetricRow> = {}): MetricRow {
     clicks: null,
     followers: null,
     error: null,
+    unavailable: false,
     fetchedAt: "2026-09-09T00:00:00.000Z",
     ...over,
   };
@@ -42,6 +43,7 @@ function platform(over: Partial<PlatformStats> = {}): PlatformStats {
     connected: true,
     missing: 0,
     error: null,
+    unavailable: false,
     posts: 0,
     views: 0,
     likes: 0,
@@ -161,9 +163,28 @@ describe("buildTips", () => {
       posts: 3,
       missing: 3,
       error: "video.list mancante",
+      unavailable: false,
     });
     expect(ids(buildTips(rows, [broken]))).toContain("noMetrics");
     // Stessa piattaforma senza errori: nessun allarme.
     expect(ids(buildTips(rows, [platform({ posts: 3, missing: 0 })]))).not.toContain("noMetrics");
+  });
+
+  it("non consiglia di ricollegare una piattaforma che le statistiche non le espone", () => {
+    // LinkedIn su profilo personale: la connessione è a posto, è l'API a non
+    // dare i numeri. Dire "ricollega l'account" manderebbe a sbattere.
+    const rows = Array.from({ length: 6 }, (_, i) => row({ targetId: i }));
+    const linkedin = platform({
+      platform: "linkedin",
+      displayName: "LinkedIn",
+      posts: 3,
+      missing: 3,
+      error: "LinkedIn non espone le statistiche dei post di un profilo personale",
+      unavailable: true,
+    });
+    const tips = buildTips(rows, [linkedin]);
+    expect(ids(tips)).toContain("noMetricsUnsupported");
+    expect(ids(tips)).not.toContain("noMetrics");
+    expect(tips.find((t) => t.id === "noMetricsUnsupported")?.level).toBe("info");
   });
 });

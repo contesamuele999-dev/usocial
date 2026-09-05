@@ -9,6 +9,7 @@ import {
   type PostMetrics,
   type PublishInput,
   type PublishResult,
+  type SocialComment,
   type SocialModule,
   type TokenSet,
 } from "../types";
@@ -34,6 +35,9 @@ export const youtubeModule: SocialModule = {
     scopes: [
       "https://www.googleapis.com/auth/youtube.upload",
       "https://www.googleapis.com/auth/youtube.readonly",
+      // Risponditore automatico ai commenti: leggere basta readonly, ma per
+      // SCRIVERE una risposta Google pretende force-ssl.
+      "https://www.googleapis.com/auth/youtube.force-ssl",
     ],
     extraAuthParams: { access_type: "offline", prompt: "consent" },
   },
@@ -149,6 +153,43 @@ export const youtubeModule: SocialModule = {
       /* iscritti non leggibili: il tasso di engagement non verrà calcolato */
     }
     return out;
+  },
+
+  comments: {
+    publicReply: true,
+    privateReply: false, // YouTube non ha messaggi privati via API
+  },
+
+  async listComments(account: Account, externalId: string): Promise<SocialComment[]> {
+    const res = await apiFetch(
+      `https://www.googleapis.com/youtube/v3/commentThreads?part=snippet&maxResults=100&videoId=${encodeURIComponent(externalId)}`,
+      { headers: { Authorization: `Bearer ${account.accessToken}` } }
+    );
+    const items = (res.items as Record<string, unknown>[]) || [];
+    return items.map((item) => {
+      const top = (item.snippet as { topLevelComment?: { id?: string; snippet?: Record<string, unknown> } })
+        ?.topLevelComment;
+      const sn = (top?.snippet || {}) as Record<string, unknown>;
+      const channel = sn.authorChannelId as { value?: string } | undefined;
+      return {
+        id: (top?.id as string) || (item.id as string),
+        text: (sn.textOriginal as string) || (sn.textDisplay as string) || "",
+        author: (sn.authorDisplayName as string) || "",
+        authorId: channel?.value,
+        createdAt: (sn.publishedAt as string) || new Date().toISOString(),
+      };
+    });
+  },
+
+  async replyToComment(account: Account, commentId: string, message: string) {
+    await apiFetch("https://www.googleapis.com/youtube/v3/comments?part=snippet", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${account.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ snippet: { parentId: commentId, textOriginal: message } }),
+    });
   },
 
   async refresh(account: Account) {

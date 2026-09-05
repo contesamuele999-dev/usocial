@@ -23,6 +23,12 @@ const CLEANUP_INTERVAL_MS = 3600_000;
  * un post non cambiano abbastanza da giustificare di bruciarlo.
  */
 const STATS_INTERVAL_MS = 6 * 3600_000;
+/**
+ * Risponditore ai commenti: ogni 5 minuti. Chi commenta "PAUSA" si aspetta la
+ * guida subito, non l'indomani; più spesso di così si spenderebbero chiamate
+ * API per rileggere gli stessi commenti.
+ */
+const AUTOREPLY_INTERVAL_MS = 5 * 60_000;
 
 export function startScheduler() {
   const g = globalThis as unknown as { __usocialScheduler?: boolean };
@@ -107,6 +113,25 @@ export function startScheduler() {
   };
   setInterval(statsTick, STATS_INTERVAL_MS);
   setTimeout(statsTick, 120_000); // due minuti dopo l'avvio: prima si pubblica
+
+  // Risponditore automatico ai commenti. Gira solo per gli utenti che hanno
+  // almeno una regola ATTIVA: una regola creata e mai accesa non deve
+  // scrivere a nessuno.
+  const autoReplyTick = async () => {
+    try {
+      const { allAccountsSystem, listAutoReplyRules } = await import("./repo");
+      const { runAutoReply } = await import("./autoreply");
+      const users = [...new Set(allAccountsSystem().map((a) => a.userId))];
+      for (const userId of users) {
+        if (!listAutoReplyRules(userId).some((r) => r.enabled)) continue;
+        await runAutoReply(userId);
+      }
+    } catch (err) {
+      logger.error("scheduler", "Errore nel risponditore ai commenti", String(err));
+    }
+  };
+  setInterval(autoReplyTick, AUTOREPLY_INTERVAL_MS);
+  setTimeout(autoReplyTick, 90_000);
 }
 
 /** Rimette in coda i target rimasti in "publishing" (interrotti da un riavvio). */

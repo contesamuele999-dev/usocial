@@ -37,7 +37,17 @@ describe("registry social", () => {
 
   it("platformInfo non espone funzioni server", () => {
     for (const info of platformInfo()) {
-      expect(Object.keys(info).sort()).toEqual(["color", "displayName", "limits", "platform"]);
+      expect(Object.keys(info).sort()).toEqual([
+        "color",
+        "comments",
+        "displayName",
+        "limits",
+        "platform",
+      ]);
+      // Il punto del controllo non è l'elenco delle chiavi ma che non passi
+      // niente di eseguibile al browser: `publish`, `insights` e compagnia
+      // parlano con le API social usando i token.
+      expect(JSON.parse(JSON.stringify(info))).toEqual(info);
     }
   });
 });

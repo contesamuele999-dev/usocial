@@ -18,6 +18,7 @@ const NAV = [
   { href: "/calendar", key: "nav.calendar", icon: "🗓️" },
   { href: "/media", key: "nav.media", icon: "🖼️" },
   { href: "/stats", key: "nav.stats", icon: "📈" },
+  { href: "/autoreply", key: "nav.autoreply", icon: "💬" },
   { href: "/history", key: "nav.history", icon: "📜" },
   { href: "/settings", key: "nav.settings", icon: "⚙️" },
 ];

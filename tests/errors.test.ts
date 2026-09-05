@@ -3,7 +3,7 @@
  * srotoliamo, gli esiti di pubblicazione non dicono nulla di utile.
  */
 import { describe, expect, it } from "vitest";
-import { errorMessage } from "@/lib/errors";
+import { AppError, errorMessage, withErrorHandling } from "@/lib/errors";
 
 describe("errorMessage", () => {
   it("srotola la causa di un fetch fallito", () => {
@@ -40,5 +40,29 @@ describe("errorMessage", () => {
 
   it("accetta anche valori non Error", () => {
     expect(errorMessage("boom")).toBe("boom");
+  });
+});
+
+describe("sessione scaduta", () => {
+  it("il 401 cancella il cookie di sessione", async () => {
+    // Senza questa cancellazione si innesca un giro infinito: il client manda
+    // a /login, il middleware vede il cookie e rimanda alla dashboard, che
+    // richiama le API, che rispondono di nuovo 401.
+    const handler = withErrorHandling("test", async () => {
+      throw new AppError("Autenticazione richiesta", 401);
+    });
+    const res = await handler(new Request("https://esempio.test/api/x"), {});
+    expect(res.status).toBe(401);
+    const cookie = res.headers.get("set-cookie") || "";
+    expect(cookie).toContain("usocial_session=");
+    expect(cookie).toMatch(/Max-Age=0/i);
+  });
+
+  it("gli altri errori non toccano il cookie", async () => {
+    const handler = withErrorHandling("test", async () => {
+      throw new AppError("Dati non validi", 400);
+    });
+    const res = await handler(new Request("https://esempio.test/api/x"), {});
+    expect(res.headers.get("set-cookie")).toBeNull();
   });
 });

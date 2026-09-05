@@ -7,7 +7,9 @@
 import type { Account } from "@/types";
 import {
   apiFetch,
+  InsightsUnavailableError,
   type PostMetrics,
+  type SocialComment,
   type PublishInput,
   type PublishResult,
   type SocialModule,
@@ -63,6 +65,10 @@ export const instagramModule: SocialModule = {
       // Serve alla pagina Statistiche. È lo stesso permesso che Meta concede
       // insieme agli altri: aggiungerlo obbliga però a ricollegare l'account.
       "instagram_manage_insights",
+      // Risponditore automatico ai commenti: leggere/rispondere e mandare il
+      // messaggio privato agganciato al commento sono due permessi distinti.
+      "instagram_manage_comments",
+      "instagram_manage_messages",
       "pages_show_list",
       "business_management",
     ],
@@ -180,27 +186,38 @@ export const instagramModule: SocialModule = {
   /**
    * Metriche di un post Instagram.
    *
-   * Due chiamate perché la Graph API le tiene separate: i contatori pubblici
-   * (like, commenti) stanno sul media, le metriche di copertura sotto
-   * `/insights`. Le seconde possono fallire da sole (un post più vecchio del
-   * permesso, un formato senza insight): in quel caso si restituiscono
-   * comunque like e commenti invece di perdere tutto.
+   * Tre chiamate indipendenti, ognuna con la sua rete di sicurezza: i
+   * contatori pubblici stanno sul media, copertura e salvataggi sotto
+   * `/insights`, i follower sul profilo. Prima bastava che una fallisse per
+   * perdere anche le altre — ed è quello che succedeva sulle storie, che non
+   * hanno `like_count`.
    */
-  async insights(account: Account, externalId: string): Promise<PostMetrics> {
+  async insights(account: Account, externalId: string, context): Promise<PostMetrics> {
     const { igUserId, token } = igAuth(account);
     const out: PostMetrics = {};
+    const isStory = context?.postType === "story";
+    let letto = false;
 
-    const base = await apiFetch(
-      `${GRAPH}/${externalId}?fields=like_count,comments_count&access_token=${token}`
-    );
-    out.likes = (base.like_count as number) ?? undefined;
-    out.comments = (base.comments_count as number) ?? undefined;
+    if (!isStory) {
+      try {
+        const base = await apiFetch(
+          `${GRAPH}/${externalId}?fields=like_count,comments_count&access_token=${token}`
+        );
+        out.likes = (base.like_count as number) ?? undefined;
+        out.comments = (base.comments_count as number) ?? undefined;
+        letto = true;
+      } catch {
+        /* media senza contatori pubblici: restano gli insight */
+      }
+    }
 
     try {
       // `views` ha sostituito `impressions`, deprecata per i contenuti creati
       // dopo luglio 2024: chiederla ancora farebbe fallire tutta la chiamata.
+      // Le storie hanno un elenco di metriche loro (niente salvataggi).
+      const metrics = isStory ? "views,reach,replies" : "views,reach,saved,shares";
       const res = await apiFetch(
-        `${GRAPH}/${externalId}/insights?metric=views,reach,saved,shares&access_token=${token}`
+        `${GRAPH}/${externalId}/insights?metric=${metrics}&access_token=${token}`
       );
       const data = (res.data as { name: string; values?: { value: number }[] }[]) || [];
       const val = (n: string) => data.find((d) => d.name === n)?.values?.[0]?.value;
@@ -208,8 +225,17 @@ export const instagramModule: SocialModule = {
       out.reach = val("reach");
       out.saves = val("saved");
       out.shares = val("shares");
-    } catch {
-      /* insight non disponibili per questo media: restano like e commenti */
+      if (isStory) out.comments = val("replies");
+      letto = true;
+    } catch (err) {
+      // Le storie spariscono dall'API dopo 24 ore: non è un permesso mancante
+      // e non serve ricollegare l'account, quindi va detto per quello che è.
+      if (!letto && isStory) {
+        throw new InsightsUnavailableError(
+          "Instagram non espone più le statistiche di una storia dopo 24 ore dalla pubblicazione."
+        );
+      }
+      if (!letto) throw err;
     }
 
     try {
@@ -221,6 +247,58 @@ export const instagramModule: SocialModule = {
       /* niente follower: il tasso di engagement non verrà calcolato */
     }
     return out;
+  },
+
+  comments: {
+    publicReply: true,
+    privateReply: true,
+    // Meta accetta il messaggio privato entro 7 giorni dal commento, e uno
+    // solo per commento: oltre, risponde con un errore e basta.
+    privateReplyWindowHours: 24 * 7,
+  },
+
+  async listComments(account: Account, externalId: string): Promise<SocialComment[]> {
+    const { token } = igAuth(account);
+    const res = await apiFetch(
+      `${GRAPH}/${externalId}/comments?fields=id,text,timestamp,username,from{id,username}&limit=100&access_token=${token}`
+    );
+    const data = (res.data as Record<string, unknown>[]) || [];
+    return data.map((c) => {
+      const from = c.from as { id?: string; username?: string } | undefined;
+      return {
+        id: c.id as string,
+        text: (c.text as string) || "",
+        author: (c.username as string) || from?.username || "",
+        authorId: from?.id,
+        createdAt: (c.timestamp as string) || new Date().toISOString(),
+      };
+    });
+  },
+
+  async replyToComment(account: Account, commentId: string, message: string) {
+    const { token } = igAuth(account);
+    await apiFetch(`${GRAPH}/${commentId}/replies`, {
+      method: "POST",
+      body: new URLSearchParams({ message, access_token: token }),
+    });
+  },
+
+  /**
+   * Messaggio privato agganciato al commento ("private reply").
+   * Non serve conoscere l'id del destinatario: si indica il commento e Meta
+   * recapita a chi l'ha scritto — è il motivo per cui funziona anche con
+   * persone che non ti hanno mai scritto in DM.
+   */
+  async privateReply(account: Account, comment: SocialComment, message: string) {
+    const { igUserId, token } = igAuth(account);
+    await apiFetch(`${GRAPH}/${igUserId}/messages?access_token=${token}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        recipient: { comment_id: comment.id },
+        message: { text: message },
+      }),
+    });
   },
 
   /** Come Facebook: il token long-lived si estende riscambiandolo (vedi social/tokens.ts). */

@@ -345,11 +345,25 @@ export const facebookModule: SocialModule = {
     });
   },
 
+  /**
+   * Messaggio privato a chi ha commentato.
+   *
+   * Passa dalla Pagina, non dal commento. `POST /{comment-id}/private_replies`
+   * era la forma di un tempo e non è più ammessa: Meta risponde "Unsupported
+   * post request … does not support this operation" su un commento che con una
+   * GET si legge benissimo, e l'errore sembra parlare di permessi mancanti
+   * mentre riguarda l'edge. La forma buona è quella del modulo Instagram — si
+   * indica il commento come destinatario e Meta recapita a chi l'ha scritto.
+   */
   async privateReply(account: Account, comment: SocialComment, message: string) {
-    const { pageToken } = pageAuth(account);
-    await apiFetch(`${GRAPH}/${comment.id}/private_replies`, {
+    const { pageId, pageToken } = pageAuth(account);
+    await apiFetch(`${GRAPH}/${pageId}/messages?access_token=${pageToken}`, {
       method: "POST",
-      body: new URLSearchParams({ message, access_token: pageToken }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        recipient: { comment_id: comment.id },
+        message: { text: message },
+      }),
     });
   },
 

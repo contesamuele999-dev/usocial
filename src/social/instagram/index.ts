@@ -83,7 +83,16 @@ export const instagramModule: SocialModule = {
       // `pages_manage_metadata` è nei prerequisiti Meta per la messaggistica
       // Instagram, insieme al permesso sui messaggi: senza, la chiamata viene
       // rifiutata anche col token giusto.
-      ...(MESSAGING ? ["instagram_manage_messages", "pages_manage_metadata"] : []),
+      //
+      // `pages_messaging` sembra fuori posto in una connessione Instagram, e
+      // invece è quello che mancava: il messaggio privato non passa dalle API
+      // Instagram ma dalla Messenger Platform, col token della Pagina. Senza,
+      // Meta risponde "(#3) Application does not have the capability to make
+      // this API call" — un errore che parla dell'app e fa cercare il guasto
+      // nella dashboard, mentre il permesso mancante è nel token.
+      ...(MESSAGING
+        ? ["instagram_manage_messages", "pages_manage_metadata", "pages_messaging"]
+        : []),
       "pages_show_list",
       "business_management",
     ],

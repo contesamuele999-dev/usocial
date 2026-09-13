@@ -156,6 +156,9 @@ export const facebookModule: SocialModule = {
       "pages_show_list",
       "pages_read_engagement",
       "pages_manage_posts",
+      // Video sulla Pagina (`/{page-id}/videos`) e dirette. È nella verifica
+      // Meta: se non si chiede qui, il revisore non lo trova nel consenso.
+      "publish_video",
       "business_management",
       // Impression e click del post nella pagina Statistiche. Aggiungerlo
       // obbliga a ricollegare l'account: i permessi si concedono al consenso.

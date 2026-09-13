@@ -162,6 +162,11 @@ export const facebookModule: SocialModule = {
       "read_insights",
       // Risponditore automatico: leggere e rispondere ai commenti della Pagina.
       "pages_manage_engagement",
+      // I commenti scritti da altri utenti, con il loro autore
+      // (`from{id,name}`), sono contenuto generato dagli utenti: Meta li legge
+      // solo con questo scope. Va chiesto qui anche per la verifica, perché
+      // il revisore vede soltanto i permessi della schermata di consenso.
+      "pages_read_user_content",
       ...(MESSAGING ? ["pages_messaging"] : []),
     ],
     scopeSeparator: ",",
@@ -183,7 +188,9 @@ export const facebookModule: SocialModule = {
     if (!first) throw new Error("Nessuna Pagina Facebook trovata per questo utente.");
     return {
       accountId: me.id as string,
-      accountName: `${me.name} → Pagina: ${first.name}`,
+      // Senza parole: il nome finisce nel database e si vede identico con
+      // l'interfaccia in italiano e in inglese (la verifica Meta la vuole inglese).
+      accountName: `${me.name} → ${first.name}`,
       meta: { pageId: first.id, pageToken: first.access_token, pageName: first.name },
     };
   },

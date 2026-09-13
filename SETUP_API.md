@@ -261,7 +261,7 @@ La pagina **Risposte automatiche** riconosce una parola chiave nei commenti (il 
 | Piattaforma | Risposta pubblica | Messaggio privato | Permessi da aggiungere |
 |---|---|---|---|
 | Instagram | ✅ | ✅ con `META_SCOPE_MESSAGING=true` | `instagram_manage_comments` (+ `instagram_manage_messages`) |
-| Facebook | ✅ | ✅ con `META_SCOPE_MESSAGING=true` | `pages_manage_engagement` (+ `pages_messaging`) |
+| Facebook | ✅ | ✅ con `META_SCOPE_MESSAGING=true` | `pages_manage_engagement`, `pages_read_user_content` (+ `pages_messaging`) |
 | Threads | ✅ | ❌ non esiste una API DM | `threads_manage_replies` |
 | YouTube | ✅ | ❌ | `youtube.force-ssl` |
 | TikTok, LinkedIn | ❌ | ❌ | — |

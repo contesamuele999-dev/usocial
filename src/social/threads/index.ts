@@ -34,16 +34,28 @@ function threadsUser(account: Account): { userId: string; token: string } {
   return { userId: (meta.threadsUserId as string) || account.accountId, token: account.accessToken };
 }
 
+/** Intervalli di controllo dello stato: fitti all'inizio, dove finiscono foto e testo. */
+const POLL_STEPS_MS = [1500, 2500, 4000];
+const POLL_MS = 5000;
+
+/** Tentativi di `threads_publish` quando Threads non vede ancora il container. */
+const PUBLISH_ATTEMPTS = 6;
+const PUBLISH_RETRY_MS = 5000;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 /**
  * Attende che un container sia pronto per la pubblicazione.
  *
- * Meta stessa raccomanda di aspettare ~30 secondi prima di pubblicare: il
- * container di un video appena creato è `IN_PROGRESS` e pubblicarlo subito
- * fallisce. Qui si interroga lo stato invece di dormire a caso.
+ * Vale per OGNI container, non solo per i video: Meta raccomanda di aspettare
+ * prima di pubblicare, e anche una foto viene scaricata dal nostro URL ed
+ * elaborata. Prima si aspettava solo sui video, e un post con foto (o un
+ * carosello di foto) arrivava a `threads_publish` con il container ancora
+ * `IN_PROGRESS`: Threads rispondeva "The requested resource does not exist (24)".
  */
 async function waitContainer(containerId: string, token: string): Promise<void> {
   const start = Date.now();
-  for (;;) {
+  for (let i = 0; ; i++) {
     const st = await apiFetch(
       `${API}/${containerId}?fields=status,error_message&access_token=${token}`
     );
@@ -57,7 +69,33 @@ async function waitContainer(containerId: string, token: string): Promise<void> 
     if (Date.now() - start > CONTAINER_TIMEOUT_MS) {
       throw new Error("Threads: timeout nell'elaborazione del media.");
     }
-    await new Promise((r) => setTimeout(r, 5000));
+    await sleep(POLL_STEPS_MS[i] ?? POLL_MS);
+  }
+}
+
+/** Threads risponde 24 quando non trova (ancora) la risorsa indicata. */
+export function isNotFoundYet(err: unknown): boolean {
+  return /\(24\)$/.test(err instanceof Error ? err.message : String(err));
+}
+
+/**
+ * Pubblica un container pronto.
+ *
+ * Anche con lo stato `FINISHED`, per qualche secondo `threads_publish` può non
+ * vedere il container appena creato e rispondere 24: si riprova qui, a breve,
+ * invece di far fallire il post e rimandarlo al giro di retry successivo.
+ */
+async function publishContainer(userId: string, creationId: string, token: string) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await apiFetch(`${API}/${userId}/threads_publish`, {
+        method: "POST",
+        body: new URLSearchParams({ creation_id: creationId, access_token: token }),
+      });
+    } catch (err) {
+      if (!isNotFoundYet(err) || attempt >= PUBLISH_ATTEMPTS) throw err;
+      await sleep(PUBLISH_RETRY_MS);
+    }
   }
 }
 
@@ -167,9 +205,8 @@ export const threadsModule: SocialModule = {
       const children: string[] = [];
       for (const m of input.media.slice(0, 20)) {
         const id = await createContainer(m, { is_carousel_item: "true" });
-        // Solo i video hanno un'elaborazione vera; per le foto la chiamata
-        // torna già pronta ed evitiamo un giro di polling inutile.
-        if (m.kind === "video") await waitContainer(id, token);
+        // Anche le foto: un figlio non ancora pronto fa fallire il carosello.
+        await waitContainer(id, token);
         children.push(id);
       }
       const params = new URLSearchParams({
@@ -181,18 +218,12 @@ export const threadsModule: SocialModule = {
       const json = await apiFetch(`${API}/${userId}/threads`, { method: "POST", body: params });
       creationId = json.id as string;
       await waitContainer(creationId, token);
-    } else if (type === "single") {
-      const m = input.media[0];
-      creationId = await createContainer(m, { text });
-      if (m.kind === "video") await waitContainer(creationId, token);
     } else {
-      creationId = await createContainer(null, { text });
+      creationId = await createContainer(type === "single" ? input.media[0] : null, { text });
+      await waitContainer(creationId, token);
     }
 
-    const pub = await apiFetch(`${API}/${userId}/threads_publish`, {
-      method: "POST",
-      body: new URLSearchParams({ creation_id: creationId, access_token: token }),
-    });
+    const pub = await publishContainer(userId, creationId, token);
     const id = pub.id as string;
 
     // Il permalink si legge dopo la pubblicazione; se il campo non è

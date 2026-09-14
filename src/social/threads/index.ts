@@ -13,6 +13,8 @@
 import type { Account } from "@/types";
 import {
   apiFetch,
+  isMetaPostGone,
+  postGoneError,
   type PostMetrics,
   type PublishInput,
   type PublishResult,
@@ -309,9 +311,14 @@ export const threadsModule: SocialModule = {
   /** Metriche del singolo post (richiede lo scope threads_manage_insights). */
   async insights(account: Account, externalId: string): Promise<PostMetrics> {
     const { token } = threadsUser(account);
-    const res = await apiFetch(
-      `${API}/${externalId}/insights?metric=views,likes,replies,reposts,quotes,shares&access_token=${token}`
-    );
+    let res: Record<string, unknown>;
+    try {
+      res = await apiFetch(
+        `${API}/${externalId}/insights?metric=views,likes,replies,reposts,quotes,shares&access_token=${token}`
+      );
+    } catch (err) {
+      throw isMetaPostGone(err) ? postGoneError("Threads") : err;
+    }
     const data = (res.data as { name: string; values?: { value: number }[] }[]) || [];
     const val = (name: string) => data.find((d) => d.name === name)?.values?.[0]?.value;
     const reposts = val("reposts") ?? 0;

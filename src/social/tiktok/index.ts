@@ -543,7 +543,13 @@ export const tiktokModule: SocialModule = {
     );
     const videos = (res.data as { videos?: Record<string, number>[] } | undefined)?.videos || [];
     const v = videos[0];
-    if (!v) throw new Error("TikTok: video non trovato (può essere stato eliminato).");
+    // Niente da ricollegare: il video è stato eliminato o reso non visibile
+    // (un account privato, come quelli delle app non auditate, non lo espone).
+    if (!v) {
+      throw new InsightsUnavailableError(
+        "TikTok non restituisce questo video: è stato eliminato, oppure non è pubblico."
+      );
+    }
     return {
       views: v.view_count,
       likes: v.like_count,

@@ -143,6 +143,26 @@ export class InsightsUnavailableError extends Error {
   }
 }
 
+/**
+ * Meta (Facebook, Instagram, Threads) non trova più il post:
+ * "Unsupported get request. Object with ID '…' does not exist, cannot be loaded
+ * due to missing permissions, or does not support this operation (100)".
+ *
+ * È un post eliminato, oppure pubblicato con un account o una Pagina diversi
+ * da quelli collegati adesso. Un permesso mancante ha un codice suo (10, 200):
+ * ricollegare l'account non riporterebbe questi numeri.
+ */
+export function isMetaPostGone(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /does not exist, cannot be loaded/.test(message) && /\(100\)$/.test(message);
+}
+
+export function postGoneError(platform: string): InsightsUnavailableError {
+  return new InsightsUnavailableError(
+    `${platform} non trova più questo post: è stato eliminato, oppure è stato pubblicato con un account diverso da quello collegato ora.`
+  );
+}
+
 /** Contesto del post di cui si chiedono le metriche (il tipo cambia l'endpoint). */
 export interface InsightsContext {
   /** `feed`, `reel`, `story`, … così come scelto al momento della pubblicazione. */

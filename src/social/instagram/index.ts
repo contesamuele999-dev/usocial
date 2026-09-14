@@ -8,6 +8,8 @@ import type { Account } from "@/types";
 import {
   apiFetch,
   InsightsUnavailableError,
+  isMetaPostGone,
+  postGoneError,
   type PostMetrics,
   type SocialComment,
   type PublishInput,
@@ -267,7 +269,7 @@ export const instagramModule: SocialModule = {
           "Instagram non espone più le statistiche di una storia dopo 24 ore dalla pubblicazione."
         );
       }
-      if (!letto) throw err;
+      if (!letto) throw isMetaPostGone(err) ? postGoneError("Instagram") : err;
     }
 
     try {

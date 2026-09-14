@@ -334,8 +334,11 @@ export default function StatsPage() {
             <div className="card">
               <h2 className="mb-2 font-semibold">{t("stats.tipsTitle")}</h2>
               <ul className="space-y-2">
-                {data.tips.map((tip) => (
-                  <li key={tip.id} className="flex gap-2 text-sm">
+                {data.tips.map((tip, i) => (
+                  // Non basta `tip.id`: "noMetrics" compare una volta per
+                  // piattaforma, e con la chiave ripetuta React riciclava la
+                  // stessa riga ("Threads" due volte, TikTok mai).
+                  <li key={`${tip.id}-${i}`} className="flex gap-2 text-sm">
                     <span aria-hidden>
                       {tip.level === "good" ? "✅" : tip.level === "warn" ? "⚠️" : "💡"}
                     </span>

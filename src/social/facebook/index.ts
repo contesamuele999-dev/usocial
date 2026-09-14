@@ -7,6 +7,8 @@
 import type { Account } from "@/types";
 import {
   apiFetch,
+  isMetaPostGone,
+  postGoneError,
   type PostMetrics,
   type PublishInput,
   type SocialComment,
@@ -310,7 +312,7 @@ export const facebookModule: SocialModule = {
 
     // Nessuna delle due ha funzionato: è un problema di permessi vero, va
     // riportato con il messaggio originale di Meta (dice quale manca).
-    if (!letto) throw primoErrore;
+    if (!letto) throw isMetaPostGone(primoErrore) ? postGoneError("Facebook") : primoErrore;
 
     try {
       const page = await apiFetch(

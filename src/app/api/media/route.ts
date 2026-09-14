@@ -1,6 +1,6 @@
 /**
  * /api/media
- * GET  — lista media dell'utente (filtri: ?q=ricerca&folder=cartella) + cartelle
+ * GET  — lista media dell'utente (filtri: ?q=ricerca&folder=cartella&kind=image|video) + cartelle
  * POST — upload. Due modalità:
  *   - multipart/form-data (campo "file", opzionali "folder" e "tags");
  *   - body raw in streaming (header x-filename, x-folder, x-tags e Content-Type
@@ -43,9 +43,11 @@ export const GET = withUser("media", async (req, _ctx, user) => {
   // e il browser apriva una richiesta per ogni file presente.
   const limit = Math.min(MAX_LIMIT, Math.max(1, Number(url.searchParams.get("limit")) || DEFAULT_LIMIT));
   const offset = Math.max(0, Number(url.searchParams.get("offset")) || 0);
+  const kindParam = url.searchParams.get("kind");
   const { items, total } = listMedia(user.id, {
     q: url.searchParams.get("q") || undefined,
     folder: url.searchParams.get("folder") || undefined,
+    kind: kindParam === "image" || kindParam === "video" ? kindParam : undefined,
     ids,
     limit: ids ? undefined : limit,
     offset: ids ? undefined : offset,

@@ -31,16 +31,17 @@ Da qui la scelta: **un video per permesso**, tutto in inglese.
       `instagram_manage_messages` e `pages_manage_metadata` non compaiono nel consenso.
 - [ ] Deploy della versione che chiede `pages_read_user_content` e `publish_video` e mostra il nome della Pagina senza la parola "Pagina".
 - [ ] Ricollegare Facebook e controllare **"Edit access"**: ogni permesso deve avere la sua riga.
-      Righe viste il 13/09 (Facebook in italiano), con il permesso corrispondente:
-      - Accedere agli insight sulle tue Pagine e app → `read_insights`
-      - Gestire la tua azienda → `business_management`
-      - Gestire e accedere alle conversazioni della Pagina su Messenger → `pages_messaging`
-      - Creare e gestire contenuti sulla tua Pagina → `pages_manage_posts`
-      - Gestire i commenti sulla tua Pagina → `pages_manage_engagement`
-      - Leggi il contenuto pubblicato sulla Pagina → `pages_read_engagement`
-      - Leggi il contenuto dell'utente sulla tua Pagina → `pages_read_user_content`
-      - Mostra una lista delle Pagine che gestisci → `pages_show_list`
-      - mancava `publish_video` (non era negli scope: aggiunto dopo)
+      Righe verificate il 13/09 (Facebook in inglese), con il permesso corrispondente.
+      Nel video il cartello del punto 2 va su **questa** riga:
+      - Access your Page and App insights → `read_insights`
+      - Publish video to your timeline on your behalf → `publish_video`
+      - Manage your business (1 Business selected) → `business_management`
+      - Manage and access Page conversations in Messenger → `pages_messaging`
+      - Create and manage content on your Page → `pages_manage_posts`
+      - Manage comments on your Page → `pages_manage_engagement`
+      - Read content posted on the Page → `pages_read_engagement`
+      - Read user content on your Page → `pages_read_user_content`
+      - Show a list of the Pages you manage → `pages_show_list`
 - [ ] Nelle descrizioni incollare il testo **EN**.
 
 ## PREPARAZIONE (non va nel video)

@@ -440,6 +440,8 @@ export function recoverInterruptedTargets(now: Date): number[] {
 export interface MediaFilter {
   q?: string;
   folder?: string;
+  /** Solo foto o solo video: il selettore dell'editor filtra per tipo. */
+  kind?: "image" | "video";
   /**
    * Recupera esattamente questi id, ignorando la posizione che avrebbero nella
    * libreria. Serve a chi conosce già i media che gli interessano (l'editor,
@@ -463,6 +465,10 @@ function mediaWhere(userId: number, filter?: MediaFilter): { sql: string; params
   if (filter?.folder) {
     sql += " AND folder = ?";
     params.push(filter.folder);
+  }
+  if (filter?.kind) {
+    sql += " AND mime LIKE ?";
+    params.push(`${filter.kind}/%`);
   }
   if (filter?.ids) {
     // Lista vuota: nessun risultato (senza questo `IN ()` sarebbe SQL non valido).

@@ -39,23 +39,31 @@ import { fileBodyRange } from "../upload";
 
 const API = "https://open.tiktokapis.com/v2";
 
-/** Vincoli di chunking della Content Posting API. */
-const MAX_CHUNK = 64 * 1024 * 1024;
+/**
+ * Vincoli di chunking della Content Posting API: chunk tra 5 e 64 MB, l'ultimo
+ * fino a 128 MB, file sopra i 64 MB divisi in PIÙ chunk,
+ * `total_chunk_count = floor(size / chunk_size)`.
+ *
+ * I "MB" della documentazione non dicono se sono 10^6 o 2^20 byte, e i valori
+ * scelti qui valgono in tutti e due i casi: il pezzo unico si ferma a 64 000 000
+ * byte, i chunk sono da 10 000 000 (sopra i 5 MiB, sotto i 64 MB decimali).
+ */
+const SINGLE_MAX = 64_000_000;
+const CHUNK = 10_000_000;
 
 /**
- * Divide il video secondo le regole di TikTok: fino a 64 MB si manda in un
- * pezzo solo; sopra, si usano chunk da 64 MB e l'ULTIMO assorbe il resto della
- * divisione: TikTok pretende `total_chunk_count = floor(size / chunk_size)`,
- * quindi l'ultimo chunk può superare i 64 MB — resta comunque sotto i 128 MB
- * ammessi, perché il resto della divisione per 64 MB è a sua volta < 64 MB.
+ * Divide il video: fino a 64 MB un pezzo solo, sopra chunk da 10 MB con
+ * l'ULTIMO che assorbe il resto della divisione (resta sotto i 20 MB).
  *
- * Perché: prima si mandava sempre `total_chunk_count: 1` con `chunk_size` pari
- * all'intero file — sopra i 64 MB l'init rispondeva `invalid_params` e i retry
- * ripetevano lo stesso errore fino a esaurirli.
+ * Perché: il piano precedente usava chunk da 64 MiB. Tra 64 e 128 MiB dava
+ * `total_chunk_count: 1` con un file oltre i 64 MB — che TikTok vuole diviso — e
+ * sopra usava chunk da 67 108 864 byte, oltre i 64 MB se contati in decimale.
+ * In entrambi i casi l'init rispondeva "The chunk size is invalid" e i retry
+ * ripetevano lo stesso errore.
  */
 export function chunkPlan(size: number): { chunkSize: number; ranges: [number, number][] } {
-  if (size <= MAX_CHUNK) return { chunkSize: size, ranges: [[0, size]] };
-  const chunkSize = MAX_CHUNK;
+  if (size <= SINGLE_MAX) return { chunkSize: size, ranges: [[0, size]] };
+  const chunkSize = CHUNK;
   const total = Math.floor(size / chunkSize);
   const ranges: [number, number][] = [];
   for (let i = 0; i < total; i++) {

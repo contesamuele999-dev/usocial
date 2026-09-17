@@ -124,7 +124,11 @@ export const threadsModule: SocialModule = {
       "threads_basic",
       "threads_content_publish",
       "threads_manage_insights",
-      // Risponditore automatico: leggere le risposte a un post e rispondere.
+      // Risponditore automatico. Sono due permessi distinti: leggere le
+      // risposte (`GET /{post}/replies`) vuole threads_read_replies, e senza
+      // Threads risponde "(10) Application does not have permission" — il
+      // risponditore non vedeva nulla e quindi non rispondeva mai.
+      "threads_read_replies",
       "threads_manage_replies",
     ],
     scopeSeparator: ",",
@@ -302,10 +306,9 @@ export const threadsModule: SocialModule = {
         access_token: token,
       }),
     });
-    await apiFetch(`${API}/${userId}/threads_publish`, {
-      method: "POST",
-      body: new URLSearchParams({ creation_id: created.id as string, access_token: token }),
-    });
+    // Stessa attesa dei post: pubblicare un container non pronto dà "(24)".
+    await waitContainer(created.id as string, token);
+    await publishContainer(userId, created.id as string, token);
   },
 
   /** Metriche del singolo post (richiede lo scope threads_manage_insights). */

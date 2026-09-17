@@ -192,6 +192,20 @@ l'utente crea in "Nuovo Post": post con testo e un'immagine. L'utente sceglie Th
 "Pubblica ora"; uSocial crea il contenitore del media e lo pubblica con /threads_publish, solo su
 azione esplicita dell'utente.
 
+## threads_read_replies  [#16, stesso video di threads_manage_replies]
+
+**Uso:** `GET /{post}/replies`. Aggiunto il 16/09: senza, il risponditore non legge le risposte.
+
+**EN** — uSocial uses threads_read_replies for its Auto replies feature: it reads the replies to the
+posts the user published, so it can check them for the keyword of a rule the user created. The
+"Dry run" preview shows the user which replies were read. Replies are used only to decide and send
+the answer and are not shared with third parties.
+
+**IT** — uSocial usa threads_read_replies per la funzione Risposte automatiche: legge le risposte ai
+post pubblicati dall'utente per controllare se contengono la parola chiave di una regola. L'anteprima
+"Prova a vuoto" mostra quali risposte sono state lette. Le risposte servono solo a decidere e inviare
+la risposta e non vengono condivise con terzi.
+
 ## threads_manage_replies  [#16]
 
 **Uso:** `GET /{post}/replies` e risposta alle risposte dei post pubblicati.

@@ -1258,16 +1258,25 @@ export interface CommentReplyRow {
  * È il cuore dell'idempotenza: il motore rilegge gli stessi commenti a ogni
  * giro e senza questo insieme scriverebbe di nuovo alla stessa persona.
  */
-export function seenCommentIds(userId: number, platform: Platform): Set<string> {
+export function seenCommentIds(
+  userId: number,
+  platform: Platform,
+  includeSkipped = true
+): Set<string> {
   const rows = getDb()
-    .prepare("SELECT comment_id FROM comment_replies WHERE user_id = ? AND platform = ?")
+    .prepare(
+      "SELECT comment_id FROM comment_replies WHERE user_id = ? AND platform = ?" +
+        (includeSkipped ? "" : " AND status != 'skipped'")
+    )
     .all(userId, platform) as { comment_id: string }[];
   return new Set(rows.map((r) => r.comment_id));
 }
 
 /**
- * Registra l'esito per un commento. `INSERT OR IGNORE`: se due esecuzioni si
- * accavallassero, la prima vince e la seconda non scrive un doppione.
+ * Registra l'esito per un commento. Se due esecuzioni si accavallassero, la
+ * prima vince e la seconda non scrive un doppione. Unica eccezione: un
+ * "skipped" si sovrascrive, perché l'invio scelto a mano dall'anteprima può
+ * rispondere a un commento su cui nessuna regola accesa era scattata.
  */
 export function recordCommentReply(row: {
   userId: number;
@@ -1284,9 +1293,13 @@ export function recordCommentReply(row: {
   return (
     getDb()
       .prepare(
-        `INSERT OR IGNORE INTO comment_replies
+        `INSERT INTO comment_replies
            (platform, comment_id, user_id, rule_id, target_id, post_id, author, text, status, detail)
-         VALUES (@platform, @commentId, @userId, @ruleId, @targetId, @postId, @author, @text, @status, @detail)`
+         VALUES (@platform, @commentId, @userId, @ruleId, @targetId, @postId, @author, @text, @status, @detail)
+         ON CONFLICT(platform, comment_id) DO UPDATE SET
+           rule_id = excluded.rule_id, status = excluded.status, detail = excluded.detail,
+           created_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+         WHERE comment_replies.status = 'skipped'`
       )
       .run({
         ...row,

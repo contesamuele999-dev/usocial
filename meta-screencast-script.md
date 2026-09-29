@@ -1,5 +1,33 @@
 # uSocial — Screencast per la verifica Meta (secondo invio)
 
+## TERZO INVIO (esito del 18 settembre 2026)
+
+Approvati 17 permessi. Restano tre, ognuno per un motivo diverso:
+
+- **`publish_video` — togliere, non rimandare.** Meta: "non necessario". Ha ragione: video e dirette
+  della Pagina passano da `pages_manage_posts` col token della Pagina. Tolto dallo scope il 29/09.
+  Rimuoverlo dalla richiesta e dalle descrizioni (#6 non si registra più).
+- **`instagram_manage_messages` — rifare il video #14.** Nota del revisore: non si vede il messaggio
+  partire dall'app e arrivare nel client nativo. Il video deve avere, in quest'ordine:
+  1. **scelta dell'asset visibile**: in *Edit access* la Pagina e l'account Instagram spuntati; poi in
+     uSocial la riga Instagram con `@username` da cui parte il messaggio;
+  2. **l'invio dal vivo**: Auto replies → la regola (tooltip su *Private message* col testo) →
+     **🧪 Dry run**: la riga col commento di @secondo_account → **📨 Send now**, cartello
+     *"Send now sends this private message to @secondo_account right now"*, esito con contatore
+     *private messages* = 1. Tieni la regola **spenta**: accesa, lo scheduler risponde da solo entro
+     5 minuti e il commento è già bruciato quando registri. Ogni ripresa vuole un commento nuovo;
+  3. **il messaggio consegnato**: Instagram (app o instagram.com) **loggato come secondo account** →
+     Direct → lo stesso testo, con l'ora che combacia. Senza stacchi tra 2 e 3.
+  Prima di registrare, provare fuori video che il DM parta davvero: il 6/09 si fermava su
+  `(#3) Application does not have the capability`. Se torna #3, controllare sull'account Instagram *Impostazioni → Messaggi → Strumenti
+  collegati → Consenti l'accesso ai messaggi* = ON.
+- **`threads_read_replies` — video proprio, non condiviso col #16.** Il revisore vuole vedere la
+  *lettura*: login Threads (C) con fermo sul permesso nel consenso → la risposta del secondo account
+  su threads.net → uSocial **🧪 Dry run**: la stessa risposta con autore e testo, cartello
+  *"uSocial reads this reply with threads_read_replies"*. Niente Run now: quello è il #16, già approvato.
+
+Nelle note d'invio: app non server-to-server, nessun token di sistema, login Meta visibile.
+
 ## COSA HA DETTO META (feedback del 12 agosto 2026)
 
 Approvati: Live Video API, public_profile. Bocciati tutti gli altri sette, **tutti per lo stesso

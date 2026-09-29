@@ -42,6 +42,7 @@ interface RunResult {
   errors: { platform: Platform; message: string }[];
   preview: {
     platform: Platform;
+    commentId: string;
     author: string;
     text: string;
     rule: string;
@@ -281,12 +282,18 @@ export default function AutoReplyPage() {
     await load();
   };
 
-  const execute = async (simulate: boolean) => {
+  /** `only` = invia la risposta a quel solo commento dell'anteprima. */
+  const execute = async (simulate: boolean, only?: { platform: Platform; commentId: string }) => {
     setBusy(true);
     setError("");
     setRun(null);
+    const query = only
+      ? `?platform=${only.platform}&comment=${encodeURIComponent(only.commentId)}`
+      : simulate
+        ? "?simulate=1"
+        : "";
     try {
-      const res = await api<RunResult>(`/api/autoreply/run${simulate ? "?simulate=1" : ""}`, {
+      const res = await api<RunResult>(`/api/autoreply/run${query}`, {
         method: "POST",
       });
       setRun(res);
@@ -359,6 +366,14 @@ export default function AutoReplyPage() {
                       {p.privateReply}
                     </p>
                   )}
+                  <button
+                    className="btn-primary mt-2 px-3 py-1 text-xs"
+                    title={t("autoreply.sendOneHint")}
+                    onClick={() => execute(false, p)}
+                    disabled={busy}
+                  >
+                    {t("autoreply.sendOne")}
+                  </button>
                 </li>
               ))}
             </ul>

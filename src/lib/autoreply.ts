@@ -155,6 +155,7 @@ export interface AutoReplyResult {
   /** Anteprima di cosa verrebbe mandato (solo in simulazione). */
   preview: {
     platform: Platform;
+    commentId: string;
     author: string;
     text: string;
     rule: string;
@@ -169,12 +170,18 @@ export interface AutoReplyResult {
  * `simulate` legge i commenti e decide cosa farebbe, senza mandare niente e
  * senza consumare la finestra dei 7 giorni: serve a vedere cosa direbbero le
  * regole prima di puntarle su persone vere.
+ *
+ * `only` tratta un solo commento, scelto dall'utente nell'anteprima: vale
+ * anche con la regola spenta, perché il click è già il consenso. Senza, il
+ * giro manuale era una corsa con lo scheduler — regola accesa, rispondeva lui
+ * entro 5 minuti; regola spenta, "Esegui adesso" non faceva niente.
  */
 export async function runAutoReply(
   userId: number,
   simulate = false,
   /** true = tutta la finestra lunga; false = solo i post delle ultime 48 ore. */
-  deep = true
+  deep = true,
+  only?: { platform: Platform; commentId: string }
 ): Promise<AutoReplyResult> {
   const res: AutoReplyResult = {
     scanned: 0,
@@ -186,7 +193,7 @@ export async function runAutoReply(
     preview: [],
   };
 
-  const rules = listAutoReplyRules(userId).filter((r) => simulate || r.enabled);
+  const rules = listAutoReplyRules(userId).filter((r) => simulate || !!only || r.enabled);
   if (rules.length === 0) return res;
 
   const since = new Date(
@@ -205,6 +212,7 @@ export async function runAutoReply(
     // "(#10) Comments cannot be made on story media" e la pagina si riempiva
     // di un errore che non segnalava niente di sbagliato.
     if (target.postType === "story") continue;
+    if (only && target.platform !== only.platform) continue;
 
     const mod = getModule(target.platform);
     if (!mod.comments || !mod.listComments) continue;
@@ -223,7 +231,9 @@ export async function runAutoReply(
     if (!seen.has(target.platform)) {
       seen.set(
         target.platform,
-        simulate ? new Set<string>() : seenCommentIds(userId, target.platform)
+        // Un "skipped" non blocca l'invio scelto a mano: nessuna regola accesa
+        // combaciava, non è partito niente.
+        simulate ? new Set<string>() : seenCommentIds(userId, target.platform, !only)
       );
     }
     const already = seen.get(target.platform)!;
@@ -241,6 +251,7 @@ export async function runAutoReply(
     }
 
     for (const comment of comments) {
+      if (only && comment.id !== only.commentId) continue;
       if (already.has(comment.id)) continue;
       // Un commento nostro: è la risposta che abbiamo scritto noi. Trattarlo
       // come nuovo significherebbe rispondere a se stessi, all'infinito.
@@ -281,6 +292,7 @@ export async function runAutoReply(
       if (simulate) {
         res.preview.push({
           platform: target.platform,
+          commentId: comment.id,
           author: comment.author,
           text: comment.text.slice(0, 120),
           rule: rule.name || rule.keyword,

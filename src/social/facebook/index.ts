@@ -157,10 +157,10 @@ export const facebookModule: SocialModule = {
     scopes: [
       "pages_show_list",
       "pages_read_engagement",
+      // Copre anche video (`/{page-id}/videos`) e dirette (`/live_videos`)
+      // della Pagina. Niente publish_video: è per il diario personale e Meta
+      // l'ha respinto il 18/09/2026 come "non necessario".
       "pages_manage_posts",
-      // Video sulla Pagina (`/{page-id}/videos`) e dirette. È nella verifica
-      // Meta: se non si chiede qui, il revisore non lo trova nel consenso.
-      "publish_video",
       "business_management",
       // Impression e click del post nella pagina Statistiche. Aggiungerlo
       // obbliga a ricollegare l'account: i permessi si concedono al consenso.

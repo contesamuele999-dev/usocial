@@ -210,7 +210,16 @@ export interface SocialModule {
   limits: PlatformLimits;
   oauth: OAuthSpec;
   /** Dopo lo scambio OAuth: recupera id/nome account e metadati (es. page_id). */
-  fetchAccount(tokens: TokenSet): Promise<{ accountId: string; accountName: string; meta: Record<string, unknown> }>;
+  fetchAccount(
+    tokens: TokenSet,
+    userId: number
+  ): Promise<{
+    accountId: string;
+    accountName: string;
+    meta: Record<string, unknown>;
+    /** Pagine di altri account uSocial che questo consenso ha tolto (solo Meta). */
+    lost?: string[];
+  }>;
   /** Pubblica il contenuto. Deve lanciare Error con messaggio chiaro in caso di fallimento. */
   publish(input: PublishInput, account: Account): Promise<PublishResult>;
   /** Verifica che il token sia ancora valido. */

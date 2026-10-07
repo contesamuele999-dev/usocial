@@ -18,6 +18,7 @@ import {
   type TokenSet,
 } from "../types";
 import { env } from "@/lib/env";
+import { pickPage } from "../meta-pages";
 import { fileBlob, fileBlobRange } from "../upload";
 
 /**
@@ -177,7 +178,7 @@ export const facebookModule: SocialModule = {
     scopeSeparator: ",",
   },
 
-  async fetchAccount(tokens: TokenSet) {
+  async fetchAccount(tokens: TokenSet, userId: number) {
     // Scambia con un token long-lived (60 giorni)
     const { clientId, clientSecret } = env.oauth("facebook");
     const ll = await apiFetch(
@@ -189,14 +190,25 @@ export const facebookModule: SocialModule = {
 
     const me = await apiFetch(`${GRAPH}/me?fields=id,name&access_token=${longToken}`);
     const pages = await apiFetch(`${GRAPH}/me/accounts?access_token=${longToken}`);
-    const first = (pages.data as Record<string, unknown>[] | undefined)?.[0];
-    if (!first) throw new Error("Nessuna Pagina Facebook trovata per questo utente.");
+    const { page, lost } = pickPage(
+      (pages.data as { id: string; name: string; access_token: string }[] | undefined) || [],
+      "facebook",
+      userId,
+      me.id as string
+    );
+    if (!page) throw new Error("Nessuna Pagina Facebook trovata per questo utente.");
     return {
       accountId: me.id as string,
       // Senza parole: il nome finisce nel database e si vede identico con
       // l'interfaccia in italiano e in inglese (la verifica Meta la vuole inglese).
-      accountName: `${me.name} → ${first.name}`,
-      meta: { pageId: first.id, pageToken: first.access_token, pageName: first.name },
+      accountName: `${me.name} → ${page.name}`,
+      meta: {
+        pageId: page.id,
+        pageToken: page.access_token,
+        pageName: page.name,
+        metaUserId: me.id,
+      },
+      lost,
     };
   },
 

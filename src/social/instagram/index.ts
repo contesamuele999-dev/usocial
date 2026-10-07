@@ -18,6 +18,7 @@ import {
   type TokenSet,
 } from "../types";
 import { env } from "@/lib/env";
+import { pickPage } from "../meta-pages";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 
@@ -101,7 +102,7 @@ export const instagramModule: SocialModule = {
     scopeSeparator: ",",
   },
 
-  async fetchAccount(tokens: TokenSet) {
+  async fetchAccount(tokens: TokenSet, userId: number) {
     const { clientId, clientSecret } = env.oauth("instagram");
     const ll = await apiFetch(
       `${GRAPH}/oauth/access_token?grant_type=fb_exchange_token&client_id=${clientId}&client_secret=${clientSecret}&fb_exchange_token=${tokens.accessToken}`
@@ -115,13 +116,23 @@ export const instagramModule: SocialModule = {
     const pages = await apiFetch(
       `${GRAPH}/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}&access_token=${tokens.accessToken}`
     );
-    const withIg = (pages.data as Record<string, unknown>[] | undefined)?.find(
-      (p) => p.instagram_business_account
+    const me = await apiFetch(`${GRAPH}/me?fields=id&access_token=${tokens.accessToken}`);
+    const { page: withIg, lost } = pickPage(
+      (pages.data as {
+        id: string;
+        name: string;
+        access_token?: string;
+        instagram_business_account?: { id: string; username: string };
+      }[] | undefined) || [],
+      "instagram",
+      userId,
+      me.id as string,
+      (p) => !!p.instagram_business_account
     );
     if (!withIg) {
       throw new Error("Nessun account Instagram Business collegato alle tue Pagine Facebook.");
     }
-    const ig = withIg.instagram_business_account as { id: string; username: string };
+    const ig = withIg.instagram_business_account!;
     return {
       accountId: ig.id,
       accountName: `@${ig.username}`,
@@ -129,8 +140,11 @@ export const instagramModule: SocialModule = {
         igUserId: ig.id,
         username: ig.username,
         pageId: withIg.id,
-        pageToken: (withIg.access_token as string) || "",
+        pageName: `@${ig.username}`,
+        pageToken: withIg.access_token || "",
+        metaUserId: me.id,
       },
+      lost,
     };
   },
 

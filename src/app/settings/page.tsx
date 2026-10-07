@@ -23,7 +23,9 @@ function SettingsInner() {
     load();
     const connected = params.get("connected");
     const error = params.get("error");
+    const lost = params.get("lost");
     if (connected) setBanner({ ok: true, text: t("settings.connected", { platform: connected }) });
+    if (lost) setBanner({ ok: false, text: t("settings.pageLost", { pages: lost }) });
     if (error) setBanner({ ok: false, text: t("settings.connectFailed", { error }) });
   }, [load, params, t]);
 

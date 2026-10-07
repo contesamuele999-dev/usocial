@@ -45,7 +45,7 @@ export async function GET(req: Request, { params }: Ctx) {
 
     const mod = getModule(platform as Platform);
     const tokens = await exchangeCode(platform, mod.oauth, code);
-    const info = await mod.fetchAccount(tokens); // può aggiornare tokens (es. long-lived FB)
+    const info = await mod.fetchAccount(tokens, user.id); // può aggiornare tokens (es. long-lived FB)
 
     saveAccount({
       userId: user.id,
@@ -60,6 +60,12 @@ export async function GET(req: Request, { params }: Ctx) {
       meta: JSON.stringify(info.meta),
     });
     logger.info(platform, `Account connesso: ${info.accountName}`, undefined, user.id);
+    if (info.lost?.length) {
+      logger.warn(platform, `Il consenso ha tolto l'accesso a: ${info.lost.join(", ")}`, undefined, user.id);
+      return NextResponse.redirect(
+        `${env.appUrl}/settings?connected=${platform}&lost=${encodeURIComponent(info.lost.join(", "))}`
+      );
+    }
     return settingsUrl(platform, true);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

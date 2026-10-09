@@ -82,6 +82,9 @@ function SettingsInner() {
                 <p className="text-sm text-gray-400">{t("settings.notConnected")}</p>
               )}
               {verify[p.platform] && <p className="text-xs">{verify[p.platform]}</p>}
+              {p.connected && (p.platform === "facebook" || p.platform === "instagram") && (
+                <PagePicker platform={p.platform} onChange={load} />
+              )}
             </div>
             {p.connected ? (
               <>
@@ -122,6 +125,67 @@ function SettingsInner() {
       </section>
 
       <DangerZone />
+    </div>
+  );
+}
+
+/**
+ * Quale Pagina (o account Instagram) usa questo account uSocial, fra quelle
+ * concesse al login. Lo stesso profilo Facebook può gestire più brand: il
+ * consenso le contiene tutte e la scelta va fatta qui.
+ */
+function PagePicker({ platform, onChange }: { platform: string; onChange: () => void }) {
+  const { t } = useI18n();
+  const [pages, setPages] = useState<{ id: string; name: string; selected: boolean }[] | null>(null);
+  const [error, setError] = useState("");
+
+  const open = async () => {
+    setError("");
+    try {
+      setPages(await api(`/api/accounts/${platform}/pages`));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const choose = async (pageId: string) => {
+    setError("");
+    try {
+      await api(`/api/accounts/${platform}/pages`, {
+        method: "PUT",
+        body: JSON.stringify({ pageId }),
+      });
+      setPages(null);
+      onChange();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  return (
+    <div className="mt-1 text-xs">
+      {pages ? (
+        <label className="flex items-center gap-2">
+          {t(platform === "instagram" ? "settings.pickIg" : "settings.pickPage")}
+          <select
+            className="input py-1 text-xs"
+            value={pages.find((p) => p.selected)?.id ?? ""}
+            onChange={(e) => choose(e.target.value)}
+          >
+            {!pages.some((p) => p.selected) && <option value="">—</option>}
+            {pages.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : (
+        <button className="text-blue-600 hover:underline dark:text-blue-400" onClick={open}>
+          {t(platform === "instagram" ? "settings.changeIg" : "settings.changePage")}
+        </button>
+      )}
+      {error && <p className="text-red-600">{error}</p>}
     </div>
   );
 }

@@ -506,6 +506,10 @@ const it = {
   settings: {
     title: "Impostazioni",
     connected: "✅ Account {platform} connesso!",
+    changePage: "Cambia Pagina",
+    changeIg: "Cambia account Instagram",
+    pickPage: "Pagina usata da questo account:",
+    pickIg: "Account Instagram usato:",
     pageLost:
       "⚠️ Collegato, ma Facebook ha tolto l'accesso a {pages}, usata da un altro tuo account uSocial: lì la pubblicazione si ferma. Ricollega spuntando in «Modifica accesso» le Pagine e gli account Instagram di TUTTI i brand.",
     connectFailed: "❌ Connessione fallita: {error}",
@@ -1193,6 +1197,10 @@ const en: typeof it = {
   settings: {
     title: "Settings",
     connected: "✅ {platform} account connected!",
+    changePage: "Change Page",
+    changeIg: "Change Instagram account",
+    pickPage: "Page used by this account:",
+    pickIg: "Instagram account used:",
     pageLost:
       "⚠️ Connected, but Facebook removed access to {pages}, used by another uSocial account of yours: publishing there will stop. Reconnect and tick, under “Edit access”, the Pages and Instagram accounts of ALL your brands.",
     connectFailed: "❌ Connection failed: {error}",

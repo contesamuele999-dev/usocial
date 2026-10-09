@@ -13,8 +13,10 @@
  *     `(190) ... before impersonating a user's page`. Non si può impedire da
  *     qui: si avvisa subito, invece di scoprirlo alla prima storia fallita.
  */
-import { allAccountsSystem } from "@/lib/repo";
-import type { Platform } from "@/types";
+import { AppError } from "@/lib/errors";
+import { allAccountsSystem, saveAccount } from "@/lib/repo";
+import type { Account, Platform } from "@/types";
+import { apiFetch } from "./types";
 
 export function pickPage<T extends { id: string }>(
   /** Tutte le Pagine concesse in questo consenso. */
@@ -43,4 +45,61 @@ export function pickPage<T extends { id: string }>(
       )
       .map((o) => (o.meta.pageName as string) || o.account.accountName),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Scelta a mano, dalle Impostazioni. La scelta automatica sopra indovina; qui
+// decide l'utente fra le Pagine concesse, senza rifare il login.
+
+const GRAPH = "https://graph.facebook.com/v21.0";
+
+interface GrantedPage {
+  id: string;
+  name: string;
+  access_token: string;
+  instagram_business_account?: { id: string; username: string };
+}
+
+async function grantedPages(account: Account): Promise<GrantedPage[]> {
+  const res = await apiFetch(
+    `${GRAPH}/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}&access_token=${account.accessToken}`
+  );
+  const pages = (res.data as GrantedPage[] | undefined) || [];
+  return account.platform === "instagram" ? pages.filter((p) => p.instagram_business_account) : pages;
+}
+
+const label = (account: Account, p: GrantedPage) =>
+  account.platform === "instagram" ? `@${p.instagram_business_account!.username}` : p.name;
+
+/** Pagine (o account Instagram) fra cui scegliere, con quella in uso segnata. */
+export async function listPages(account: Account) {
+  const current = JSON.parse(account.meta || "{}").pageId;
+  return (await grantedPages(account)).map((p) => ({
+    id: p.id,
+    name: label(account, p),
+    selected: p.id === current,
+  }));
+}
+
+/** Punta l'account su un'altra Pagina concessa e lo salva. */
+export async function selectPage(account: Account, pageId: string): Promise<Account> {
+  const page = (await grantedPages(account)).find((p) => p.id === pageId);
+  if (!page) {
+    throw new AppError(
+      "Questa Pagina non è fra quelle concesse: ricollega e spuntala in «Modifica accesso»."
+    );
+  }
+  const meta = JSON.parse(account.meta || "{}");
+  Object.assign(meta, { pageId: page.id, pageToken: page.access_token, pageName: label(account, page) });
+  if (account.platform === "instagram") {
+    const ig = page.instagram_business_account!;
+    Object.assign(meta, { igUserId: ig.id, username: ig.username });
+    account.accountId = ig.id;
+    account.accountName = `@${ig.username}`;
+  } else {
+    account.accountName = account.accountName.replace(/→.*$/, `→ ${page.name}`);
+  }
+  account.meta = JSON.stringify(meta);
+  saveAccount(account);
+  return account;
 }

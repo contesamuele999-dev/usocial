@@ -117,7 +117,7 @@ l'utente crea nell'app: post con testo e una foto. L'utente scrive il post in "N
 sceglie Facebook e clicca "Pubblica ora". uSocial non pubblica
 mai senza un'azione esplicita dell'utente.
 
-## publish_video  [#6]
+## publish_video  [#6] — ❌ NON RICHIEDERE PIÙ (respinto il 18/09 come non necessario, tolto dallo scope)
 
 **Uso:** `POST /{page-id}/videos`.
 
@@ -192,7 +192,7 @@ l'utente crea in "Nuovo Post": post con testo e un'immagine. L'utente sceglie Th
 "Pubblica ora"; uSocial crea il contenitore del media e lo pubblica con /threads_publish, solo su
 azione esplicita dell'utente.
 
-## threads_read_replies  [#16, stesso video di threads_manage_replies]
+## threads_read_replies  [video proprio: Dry run con la risposta letta]
 
 **Uso:** `GET /{post}/replies`. Aggiunto il 16/09: senza, il risponditore non legge le risposte.
 
@@ -327,13 +327,18 @@ commenti individuati prima che venga inviato qualcosa.
 
 **EN** — uSocial uses instagram_manage_messages to send one private reply (Direct message) to a person who
 commented on the user's Instagram post with the keyword of an Auto replies rule, for example to
-send the resource they asked for. The message is linked to that comment, sent at most once per
-comment and within 7 days of it. uSocial does not start conversations with people who did not
-comment.
+send the resource they asked for. In the Auto replies page the user clicks "Dry run" to see the
+comments found on the selected Instagram account, then clicks "Send now" on one of them: uSocial
+sends the private message right away, and it is delivered to that person's Instagram Direct inbox.
+The message is linked to that comment, sent at most once per comment and within 7 days of it.
+uSocial does not start conversations with people who did not comment.
 
 **IT** — uSocial usa instagram_manage_messages per inviare un'unica risposta privata (messaggio Direct)
 a chi ha commentato un post Instagram dell'utente con la parola chiave di una regola di Risposte
-automatiche, per esempio per mandare la risorsa richiesta. Il messaggio è legato a quel commento,
+automatiche, per esempio per mandare la risorsa richiesta. Nella pagina Risposte automatiche l'utente
+clicca "Prova a vuoto" per vedere i commenti trovati sull'account Instagram scelto, poi "Invia ora" su
+uno di essi: uSocial manda subito il messaggio, che arriva nella casella Direct di quella persona.
+Il messaggio è legato a quel commento,
 parte al massimo una volta per commento ed entro 7 giorni dal commento. uSocial non avvia
 conversazioni con persone che non hanno commentato.
 

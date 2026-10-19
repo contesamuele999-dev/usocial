@@ -83,8 +83,8 @@ describe("matches", () => {
 describe("ruleFor", () => {
   const ig: Platform = "instagram";
 
-  it("ignora le regole spente", () => {
-    expect(ruleFor(comment(), [rule({ enabled: false })], ig)).toBeNull();
+  it("valuta anche le regole spente: le scarta runAutoReply, non lei", () => {
+    expect(ruleFor(comment(), [rule({ enabled: false })], ig)).not.toBeNull();
   });
 
   it("ignora le regole di un'altra piattaforma", () => {

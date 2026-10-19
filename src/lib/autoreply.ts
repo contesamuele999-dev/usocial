@@ -111,14 +111,20 @@ export function matches(text: string, keyword: string, mode: "word" | "contains"
   }
 }
 
-/** Prima regola attiva che combacia con questo commento su questa piattaforma. */
+/**
+ * Prima regola che combacia con questo commento su questa piattaforma.
+ *
+ * Non guarda `enabled`: le regole le filtra già `runAutoReply` (solo le accese
+ * per lo scheduler, tutte per la prova a vuoto e per "Invia ora"). Filtrarle
+ * anche qui rendeva invisibile nella prova a vuoto proprio la regola spenta
+ * che si stava provando.
+ */
 export function ruleFor(
   comment: SocialComment,
   rules: AutoReplyRule[],
   platform: Platform
 ): AutoReplyRule | null {
   for (const rule of rules) {
-    if (!rule.enabled) continue;
     if (rule.platforms.length > 0 && !rule.platforms.includes(platform)) continue;
     if (matches(comment.text, rule.keyword, rule.matchMode)) return rule;
   }

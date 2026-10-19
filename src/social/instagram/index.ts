@@ -340,17 +340,19 @@ export const instagramModule: SocialModule = {
    * persone che non ti hanno mai scritto in DM.
    */
   async privateReply(account: Account, comment: SocialComment, message: string) {
-    const { igUserId } = igAuth(account);
     // ⚠️ Qui NON va il token utente: l'API dei messaggi Instagram vuole il
     // token della Pagina collegata. Col token utente risponde che mancano i
     // permessi, e sembra un problema di scope quando non lo è.
-    const meta = JSON.parse(account.meta || "{}") as { pageToken?: string };
-    if (!meta.pageToken) {
+    // E l'endpoint è quello della PAGINA, come su Facebook: `/{ig-user-id}/messages`
+    // è la forma del login Instagram (graph.instagram.com); qui, col login
+    // Facebook, risponde `(100) Invalid parameter` (visto il 19/10/2026).
+    const meta = JSON.parse(account.meta || "{}") as { pageId?: string; pageToken?: string };
+    if (!meta.pageId || !meta.pageToken) {
       throw new Error(
         "Instagram: manca il token della Pagina, necessario per i messaggi privati. Ricollega l'account Instagram dalle Impostazioni."
       );
     }
-    await apiFetch(`${GRAPH}/${igUserId}/messages?access_token=${meta.pageToken}`, {
+    await apiFetch(`${GRAPH}/${meta.pageId}/messages?access_token=${meta.pageToken}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

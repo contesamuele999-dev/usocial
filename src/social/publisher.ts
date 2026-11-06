@@ -8,6 +8,7 @@ import path from "node:path";
 import { env } from "@/lib/env";
 import { errorMessage } from "@/lib/errors";
 import { logger } from "@/lib/logger";
+import { emailUser } from "@/lib/mail";
 import {
   deleteMediaSystem,
   dueReclaimableMedia,
@@ -136,6 +137,14 @@ async function publishTarget(post: Post, target: PostTarget) {
         `Pubblicazione post #${post.id} fallita definitivamente dopo ${MAX_ATTEMPTS} tentativi`,
         message,
         userId
+      );
+      // Nessuno guarda la Cronologia ogni giorno: senza email il post resta perso in silenzio.
+      await emailUser(
+        userId,
+        `uSocial: post non pubblicato su ${mod.displayName}`,
+        `Il post "${post.title || `#${post.id}`}" non è stato pubblicato su ${mod.displayName} ` +
+          `dopo ${MAX_ATTEMPTS} tentativi.\n\nErrore: ${message}\n\n` +
+          `Apri il post: ${env.appUrl}/posts/${post.id}\n`
       );
     }
   }

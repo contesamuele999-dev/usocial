@@ -31,6 +31,14 @@ export const env = {
     const mb = Number(process.env.USER_QUOTA_MB);
     return (Number.isFinite(mb) && mb > 0 ? mb : 2048) * 1024 * 1024;
   },
+  /** Avviso email "contenuti in esaurimento" (Maileroo). Vuota = avviso spento. */
+  get mailerooApiKey(): string {
+    return process.env.MAILEROO_API_KEY || "";
+  },
+  /** Indirizzo mittente dell'avviso: dominio verificato su Maileroo. */
+  get alertFrom(): string {
+    return process.env.ALERT_FROM || "";
+  },
   /** Credenziali OAuth per piattaforma (vuote = piattaforma non configurata). */
   oauth(platform: string): { clientId: string; clientSecret: string } {
     const map: Record<string, [string, string]> = {

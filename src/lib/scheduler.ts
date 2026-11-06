@@ -29,6 +29,8 @@ const STATS_INTERVAL_MS = 6 * 3600_000;
  * API per rileggere gli stessi commenti.
  */
 const AUTOREPLY_INTERVAL_MS = 5 * 60_000;
+/** Controllo contenuti in esaurimento (avviso email). */
+const CONTENT_ALERT_INTERVAL_MS = 3600_000;
 
 export function startScheduler() {
   const g = globalThis as unknown as { __usocialScheduler?: boolean };
@@ -140,6 +142,19 @@ export function startScheduler() {
   };
   setInterval(autoReplyTick, AUTOREPLY_INTERVAL_MS);
   setTimeout(autoReplyTick, 90_000);
+
+  // Avviso email quando un account ha contenuti per meno di una settimana.
+  // Ogni ora basta: il dedup in settings evita di riscrivere ogni volta.
+  const alertTick = async () => {
+    try {
+      const { runContentAlerts } = await import("./content-alert");
+      await runContentAlerts();
+    } catch (err) {
+      logger.error("scheduler", "Errore nell'avviso contenuti in esaurimento", String(err));
+    }
+  };
+  setInterval(alertTick, CONTENT_ALERT_INTERVAL_MS);
+  setTimeout(alertTick, 180_000);
 }
 
 /** Rimette in coda i target rimasti in "publishing" (interrotti da un riavvio). */

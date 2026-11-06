@@ -14,7 +14,10 @@
  * - Meta (Facebook/Instagram): il token long-lived dura 60 giorni e si estende
  *   riscambiandolo; i page token derivati non scadono finché il token utente è valido.
  */
+import { getSetting, setSetting } from "@/lib/db";
+import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
+import { emailUser } from "@/lib/mail";
 import { allAccountsSystem, saveAccount } from "@/lib/repo";
 import type { Account, Platform } from "@/types";
 import { getModule } from "./registry";
@@ -70,8 +73,36 @@ export async function refreshAccount(account: Account): Promise<boolean> {
       String(err),
       account.userId
     );
+    await alertTokenFailure(account, mod.displayName, String(err));
     return false;
   }
+}
+
+/** Mancano meno di 3 giorni alla scadenza: oltre si lasciano lavorare i retry orari. */
+const TOKEN_ALERT_BEFORE_MS = 3 * 86400_000;
+
+/**
+ * true se va mandata l'email "ricollega l'account". Una sola volta per
+ * collegamento: `connectedAt` cambia a ogni rinnovo riuscito o riconnessione,
+ * e allora l'avviso si riarma.
+ */
+export function shouldAlertTokenFailure(account: Account, alerted: string, now = Date.now()): boolean {
+  if (alerted === account.connectedAt) return false;
+  if (!account.expiresAt) return true;
+  return new Date(account.expiresAt).getTime() - now < TOKEN_ALERT_BEFORE_MS;
+}
+
+async function alertTokenFailure(account: Account, name: string, error: string) {
+  const key = `token_alert:${account.platform}`;
+  if (!shouldAlertTokenFailure(account, getSetting(account.userId, key))) return;
+  const sent = await emailUser(
+    account.userId,
+    `uSocial: ricollega ${name}`,
+    `Il collegamento di ${name}${account.accountName ? ` (${account.accountName})` : ""} sta per scadere ` +
+      `e il rinnovo automatico non riesce. Senza ricollegarlo i post programmati non usciranno.\n\n` +
+      `Errore: ${error}\n\nRicollega da Impostazioni: ${env.appUrl}/settings\n`
+  );
+  if (sent) setSetting(account.userId, key, account.connectedAt);
 }
 
 /**

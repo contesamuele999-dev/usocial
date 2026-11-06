@@ -15,7 +15,7 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "usocial-test-"));
 const { getDb } = await import("@/lib/db");
 const { reclaimablePostMedia, mediaPendingUsage, scheduleMediaReclaim, dueReclaimableMedia, createPost } =
   await import("@/lib/repo");
-const { needsRefresh } = await import("@/social/tokens");
+const { needsRefresh, shouldAlertTokenFailure } = await import("@/social/tokens");
 const { mediaWarnings } = await import("@/lib/client");
 const { instagramModule } = await import("@/social/instagram");
 const { tiktokModule } = await import("@/social/tiktok");
@@ -203,5 +203,22 @@ describe("avvisi di formato", () => {
     expect(
       mediaWarnings([...photos, { originalName: "x.jpg", mime: "image/jpeg" }], [info(tiktokModule)], t)
     ).toEqual(["mediaPicker.warnTooMany", "mediaPicker.warnTooManyImages"]);
+  });
+});
+
+describe("avviso rinnovo token fallito", () => {
+  const now = Date.now();
+  const acc = (daysLeft: number) =>
+    ({
+      platform: "instagram",
+      connectedAt: "2026-10-01T00:00:00.000Z",
+      expiresAt: new Date(now + daysLeft * 86400_000).toISOString(),
+    }) as Parameters<typeof shouldAlertTokenFailure>[0];
+
+  it("avvisa solo a meno di 3 giorni dalla scadenza, una volta per collegamento", () => {
+    expect(shouldAlertTokenFailure(acc(10), "", now)).toBe(false); // i retry orari hanno tempo
+    expect(shouldAlertTokenFailure(acc(1), "", now)).toBe(true);
+    expect(shouldAlertTokenFailure(acc(1), "2026-10-01T00:00:00.000Z", now)).toBe(false); // già avvisato
+    expect(shouldAlertTokenFailure(acc(-1), "2026-09-01T00:00:00.000Z", now)).toBe(true); // ricollegato e rotto di nuovo
   });
 });
